@@ -1,0 +1,15 @@
+bin/
+obj/
+releases/
+*.log
+.vs/
+*.user
+*.suo
+preview.png
+!docs/preview.png
+self-test.txt
+step-test.txt
+SAP-*.json
+captures/
+.env
+.env.*

@@ -25,7 +25,7 @@ A portable Windows tool for inspecting SAP GUI controls and capturing an annotat
 
 1. Open SAP GUI for Windows and log in.
 2. Run the inspector in the same Windows desktop/session as SAP.
-3. Select the SAP session and choose **Start** to save the initial screen.
+3. Select the SAP session and choose **Capture step** to save the initial screen.
 4. Perform one action in SAP and wait for it to finish.
 5. Press **Ctrl+Alt+F8** to capture the next screen. Repeat for each action.
 6. Choose **Stop**, review the timeline, and label the actions and controls.
@@ -92,3 +92,5 @@ API reference: https://help.sap.com/doc/9215986e54174174854b0af6bb14305a/770.03/
 ## Workspace design
 
 The light workspace includes a session toolbar, resizable screen/control/details panels, a numbered capture timeline, an action editor and a live SAP-style script preview. JSON export preserves the full capture sequence.
+
+Saved sessions opens exported JSON sequences for review and continued capture. Settings contains the optional auto-refresh switch.

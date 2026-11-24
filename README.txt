@@ -1,4 +1,4 @@
-﻿SAP SCREEN INSPECTOR
+SAP SCREEN INSPECTOR
 ====================
 
 1. Open SAP GUI for Windows and log in.
@@ -52,7 +52,7 @@ Standalone Windows utility; no database backend is needed.
 
 STEP CAPTURE (v1.1)
 ==================
-1. Select your SAP session and choose Start. This saves the starting screen.
+1. Select your SAP session and choose Capture step. This saves the starting screen.
 2. Perform ONE action in SAP and wait for SAP to finish loading.
 3. Press Ctrl+Alt+F8 while SAP is active. This saves the next screen without
    switching to the inspector. Alternatively click Capture step.
@@ -78,3 +78,5 @@ Sequences are held in memory until exported. Closing with unexported changes
 prompts first. Start becomes Resume after stopping; New starts a fresh sequence.
 
 SAP-style text export: choose Export steps, then SAP script text. Label actions and controls and supply required action values. Unsupported actions become TODO comments. Save JSON too to preserve snapshots.
+
+Saved sessions opens exported JSON sequences for review and continued capture. Settings contains the optional auto-refresh switch.

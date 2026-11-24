@@ -10,6 +10,8 @@ public record SapSession(string Id,string System,string Client,string User,strin
 }
 public record ControlRow(string Id,string Type,string Name,string Text,string Tooltip,string Parent,int Depth,string Changeable,string Columns) {
  public string Change {get;set;}="";
+ [System.Text.Json.Serialization.JsonIgnore] public string StatusLabel=>string.IsNullOrEmpty(Change)?"Captured":Change;
+ [System.Text.Json.Serialization.JsonIgnore] public string Icon=>Type switch {"GuiButton"=>"\uE768","GuiTab"=>"\uE8B7","GuiCheckBox"=>"\uE73A","GuiComboBox"=>"\uE70D","GuiMainWindow"=>"\uE737","GuiUserArea"=>"\uE8B7",_=>"\uE8A5"};
  public string ShortId => Id.Contains("/wnd[")?Id[Id.IndexOf("/wnd[")..].TrimStart('/'):Id;
 }
 public record Snapshot(DateTime Captured,SapSession Session,List<ControlRow> Controls,bool ValuesIncluded,List<string> Warnings);

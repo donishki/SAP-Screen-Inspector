@@ -76,3 +76,5 @@ Each snapshot preserves its own Include screen values setting. Turning it off
 later does not remove values from earlier steps. Password fields stay excluded.
 Sequences are held in memory until exported. Closing with unexported changes
 prompts first. Start becomes Resume after stopping; New starts a fresh sequence.
+
+SAP-style text export: choose Export steps, then SAP script text. Label actions and controls and supply required action values. Unsupported actions become TODO comments. Save JSON too to preserve snapshots.

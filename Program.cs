@@ -91,7 +91,7 @@ public sealed partial class Controller {
 
   if(busy)return;busy=true;Enable();Status("Looking for SAP sessions…");
 
-  try{var data=demo?new Reply(Sessions:[Demo().Session]):await Reader.Run(new("sessions"));if(closed)return;var box=Get<ComboBox>("Sessions");box.ItemsSource=data.Sessions;box.SelectedIndex=data.Sessions?.Count>0?0:-1;Status(demo?"DEMO — sample controls only; no SAP connection.":"Select a session, navigate in SAP, then capture the screen.");}
+  try{var data=demo?new Reply(Sessions:[Demo().Session]):await Reader.Run(new("sessions"));if(closed)return;var box=Get<ComboBox>("Sessions");box.ItemsSource=data.Sessions;box.SelectedIndex=data.Sessions?.Count>0?0:-1;Get<TextBlock>("ConnectionStatus").Text=demo?"Demo session":data.Sessions?.Count>0?"SAP session available":"No SAP session";Status(demo?"DEMO — sample controls only; no SAP connection.":"Select a session, navigate in SAP, then capture the screen.");}
 
   catch(Exception ex){Status(ex.Message);}finally{busy=false;if(!closed)Enable();}
 
@@ -156,11 +156,15 @@ public sealed partial class Controller {
 
  void Show(ControlRow? row){
 
-  selected=row;var panel=Get<StackPanel>("Details");panel.Children.Clear();panel.Children.Add(new TextBlock{Text="Control details",FontSize=19,FontWeight=FontWeights.SemiBold,Margin=new(0,0,0,18)});
+  selected=row;var panel=Get<StackPanel>("Details");panel.Children.Clear();panel.Children.Add(new TextBlock{Text=row?.Name??"Select a control",FontSize=19,FontWeight=FontWeights.SemiBold,Margin=new(0,0,0,18)});
 
-  void Field(string name,string value){panel.Children.Add(new TextBlock{Text=name,Foreground=new SolidColorBrush(Color.FromRgb(96,116,138)),Margin=new(0,0,0,5)});panel.Children.Add(new TextBox{Text=string.IsNullOrEmpty(value)?"—":value,IsReadOnly=true,TextWrapping=TextWrapping.Wrap,Background=new SolidColorBrush(Color.FromRgb(247,249,252)),Margin=new(0,0,0,15)});}
+  void Field(string name,string value){
+   var line=new Grid{Margin=new(0,0,0,12)};line.ColumnDefinitions.Add(new ColumnDefinition{Width=new GridLength(66)});line.ColumnDefinitions.Add(new ColumnDefinition{Width=new GridLength(1,GridUnitType.Star)});
+   line.Children.Add(new TextBlock{Text=name,VerticalAlignment=VerticalAlignment.Center,Foreground=new SolidColorBrush(Color.FromRgb(96,116,138))});
+   var field=new TextBox{Text=string.IsNullOrEmpty(value)?"�":value,IsReadOnly=true,TextWrapping=TextWrapping.Wrap,Background=new SolidColorBrush(Color.FromRgb(247,249,252)),Padding=new(8,6,8,6)};Grid.SetColumn(field,1);line.Children.Add(field);panel.Children.Add(line);
+  }
+  if(row!=null){Field("Type",row.Type);Field("ID",row.ShortId);Field("Name",row.Name);Field("Value",snapshot?.ValuesIncluded==true?row.Text:"Hidden");if(row.Tooltip.Length>0)Field("Tooltip",row.Tooltip);if(row.Columns.Length>0)Field("Columns",row.Columns);}
 
-  if(row!=null){Field("CONTROL ID",row.ShortId);Field("TYPE",row.Type);Field("NAME",row.Name);Field("TOOLTIP",row.Tooltip);Field("VALUE",snapshot?.ValuesIncluded==true?row.Text:"Hidden — enable Include screen values to capture.");Field("CHANGEABLE",row.Changeable);if(row.Columns.Length>0)Field("GRID COLUMN IDS",row.Columns);}
 
   else panel.Children.Add(new TextBlock{Text="Select a control to see its ID and properties.",TextWrapping=TextWrapping.Wrap});
 

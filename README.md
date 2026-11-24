@@ -4,7 +4,7 @@ A portable Windows tool for inspecting SAP GUI controls and capturing an annotat
 
 **This is manual step capture, not automatic click recording or a replayable SAP script.** It uses read-only SAP GUI Scripting access and does not require recording events. SAP scripting access must still be enabled.
 
-![Step capture with sample data](docs/preview.png)
+![Step capture with sample data](workspace-preview.png)
 
 ## Features
 
@@ -15,6 +15,8 @@ A portable Windows tool for inspecting SAP GUI controls and capturing an annotat
 - Capture ordered steps with **Ctrl+Alt+F8**, then annotate actions and controls.
 - Select a control from the previous screen when it disappears after an action.
 - Export individual snapshots or the complete sequence as JSON.
+- Export a SAP-style VBScript draft as a text file, with TODOs for unsupported or incomplete actions.
+- Enter action values for text, combo keys, checkbox states or virtual key numbers (Enter = 0).
 - Optional auto-refresh outside step-capture mode.
 - Password controls excluded; screen values excluded by default.
 - Isolated reader process with a 25-second timeout.
@@ -27,7 +29,7 @@ A portable Windows tool for inspecting SAP GUI controls and capturing an annotat
 4. Perform one action in SAP and wait for it to finish.
 5. Press **Ctrl+Alt+F8** to capture the next screen. Repeat for each action.
 6. Choose **Stop**, review the timeline, and label the actions and controls.
-7. Choose **Export steps** to save the sequence.
+7. Choose **SAP script (.txt)** or **JSON (.json)** to export.
 
 **Capture screen** and **Export capture** also work without starting a sequence.
 If the hotkey is already registered by another program, use **Capture step**.
@@ -80,3 +82,13 @@ Tests use simulated SAP objects; live compatibility must be checked in your SAP 
 - SelfTests.cs: simulated SAP fixtures and checks.
 
 Independent project; not affiliated with or endorsed by SAP.
+
+## SAP-style text export
+
+Choose **SAP script (.txt)**. Annotate each step with its action and control. Text actions can use explicitly captured screen values or an action value. Combo selections need the SAP key, not the displayed caption. Password commands are omitted. Grid/tree actions and double-clicks need manual completion and are exported as TODO comments. The output uses SAP GUI VBScript syntax but is a draft, not an exact automatic recording. Export JSON as well to preserve all snapshots.
+
+API reference: https://help.sap.com/doc/9215986e54174174854b0af6bb14305a/770.03/en-US/sap_gui_scripting_api.pdf
+
+## Workspace design
+
+The light workspace includes a session toolbar, resizable screen/control/details panels, a numbered capture timeline, an action editor and a live SAP-style script preview. JSON export preserves the full capture sequence.

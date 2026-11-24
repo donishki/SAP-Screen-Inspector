@@ -12,6 +12,7 @@ public sealed class CapturedStep {
  public DateTime Captured{get;set;}
  public string Action{get;set;}="Unspecified";
  public string ControlId{get;set;}="";
+ public string Argument{get;set;}="";
  public string Notes{get;set;}="";
  public Snapshot Screen{get;set;}=null!;
  [System.Text.Json.Serialization.JsonIgnore]
@@ -47,9 +48,11 @@ public sealed partial class Controller {
    recording=false;steps.Clear();stepsDirty=false;RefreshSteps();Enable();UpdateStepStatus();
   };
   Get<Button>("ExportSteps").Click+=(_,_)=>ExportSequence();
+  Get<Button>("ExportJson").Click+=(_,_)=>ExportSequence(true);
   Get<ListBox>("StepList").SelectionChanged+=(_,_)=>SelectStep();
   Get<ComboBox>("StepAction").SelectionChanged+=(_,_)=>SaveStepDetails();
   Get<ComboBox>("StepControl").SelectionChanged+=(_,_)=>SaveStepDetails();
+  Get<TextBox>("StepArgument").TextChanged+=(_,_)=>SaveStepDetails();
   Get<TextBox>("StepNotes").TextChanged+=(_,_)=>SaveStepDetails();
   w.SourceInitialized+=(_,_)=>{
    var handle=new WindowInteropHelper(w).Handle;source=HwndSource.FromHwnd(handle);source.AddHook(Hotkey);
@@ -71,10 +74,11 @@ public sealed partial class Controller {
   Get<Button>("StopSteps").IsEnabled=recording&&!busy;
   Get<Button>("NewSteps").IsEnabled=!busy&&steps.Count>0;
   Get<Button>("ExportSteps").IsEnabled=!busy&&steps.Count>0;
+  Get<Button>("ExportJson").IsEnabled=!busy&&steps.Count>0;
   Get<Button>("Reload").IsEnabled=!busy&&!recording;
   Get<CheckBox>("Auto").IsEnabled=!recording&&!busy;
   bool hasStep=Get<ListBox>("StepList").SelectedItem is CapturedStep;
-  foreach(string name in new[]{"StepAction","StepControl","StepNotes"})Get<FrameworkElement>(name).IsEnabled=hasStep&&!busy;
+  foreach(string name in new[]{"StepAction","StepControl","StepArgument","StepNotes"})Get<FrameworkElement>(name).IsEnabled=hasStep&&!busy;
  }
  void UpdateStepStatus(){
   string key=hotkeyRegistered?"Ctrl + Alt + F8":"Hotkey unavailable — use Capture step";
@@ -99,6 +103,7 @@ public sealed partial class Controller {
    var step=Get<ListBox>("StepList").SelectedItem as CapturedStep;
    Get<ComboBox>("StepAction").SelectedItem=step?.Action;
    Get<TextBox>("StepNotes").Text=step?.Notes??"";
+   Get<TextBox>("StepArgument").Text=step?.Argument??"";
    var controls=new List<ControlChoice>{new("","Not specified")};
    if(step!=null){
     var previous=steps.TakeWhile(s=>s!=step).LastOrDefault();
@@ -112,15 +117,24 @@ public sealed partial class Controller {
    }
    Get<ComboBox>("StepControl").ItemsSource=controls;Get<ComboBox>("StepControl").SelectedItem=controls.FirstOrDefault(c=>c.Id==step?.ControlId)??controls[0];
   }finally{editingStep=false;}
-  EnableSteps();
+  UpdateScriptPreview();EnableSteps();
+ }
+ void UpdateScriptPreview(){
+  var step=Get<ListBox>("StepList").SelectedItem as CapturedStep;
+  if(step==null){Get<TextBox>("ScriptPreview").Text="Capture a step to preview its script.";return;}
+  string script=ScriptExport.Render(steps);
+  string marker="' Step "+step.Number+":";int start=script.IndexOf(marker,StringComparison.Ordinal);
+  int end=script.IndexOf("' Step ",start+marker.Length,StringComparison.Ordinal);
+  Get<TextBox>("ScriptPreview").Text=start>=0?script[start..(end<0?script.Length:end)].Trim():script;
  }
  void SaveStepDetails(){
   if(editingStep||Get<ListBox>("StepList").SelectedItem is not CapturedStep step)return;
   step.Action=Get<ComboBox>("StepAction").SelectedItem as string??"Unspecified";
   step.ControlId=(Get<ComboBox>("StepControl").SelectedItem as ControlChoice)?.Id??"";
+  step.Argument=Get<TextBox>("StepArgument").Text;
   step.Notes=Get<TextBox>("StepNotes").Text;stepsDirty=true;
   // Refresh labels without resetting the selection or caret in the notes editor.
-  editingStep=true;Get<ListBox>("StepList").Items.Refresh();editingStep=false;
+  editingStep=true;Get<ListBox>("StepList").Items.Refresh();editingStep=false;UpdateScriptPreview();
  }
  internal async Task StepSmoke(){
   if(!demo)return;
@@ -140,16 +154,23 @@ public sealed partial class Controller {
   var restored=JsonSerializer.Deserialize<StepSequence>(serialized)!;
   if(restored.Steps.Count!=2||restored.Steps[1].ControlId=="")throw new Exception("Sequence export failed");
   File.WriteAllText(Path.Combine(AppContext.BaseDirectory,"step-test.txt"),"PASS: ordered snapshots, isolated captures, action/control/notes editing, timeline navigation and full sequence JSON roundtrip.");
+  Get<ComboBox>("StepAction").SelectedItem="Enter text";
+  Get<ComboBox>("StepControl").SelectedItem=((IEnumerable<ControlChoice>)Get<ComboBox>("StepControl").ItemsSource).First(c=>c.Id.Contains("ctxtP_MATNR"));
+  Get<TextBox>("StepArgument").Text="DEMO-001";
+  if(!Get<TextBox>("ScriptPreview").Text.Contains(".text = "))throw new Exception("Live script preview failed");
+  Get<DataGrid>("Table").SelectedItem=rows.First(r=>r.Name=="P_MATNR");
   recording=false;stepsDirty=false;Enable();UpdateStepStatus();
  }
- void ExportSequence(){
+ void ExportSequence(bool json=false){
   if(steps.Count==0)return;
-  var dialog=new SaveFileDialog{Filter="Step sequence (*.json)|*.json",FileName=$"SAP-steps-{DateTime.Now:yyyyMMdd-HHmmss}.json"};
+  var dialog=new SaveFileDialog{Filter="SAP script text (*.txt)|*.txt|Step sequence (*.json)|*.json",FilterIndex=json?2:1,FileName=$"SAP-steps-{DateTime.Now:yyyyMMdd-HHmmss}."+(json?"json":"txt")};
   if(dialog.ShowDialog(w)!=true)return;
   try{
    var data=new StepSequence("SAP-Screen-Inspector-steps",1,DateTime.Now,"Manual screen snapshots; action/control labels supplied by the user. Not an event recording or replayable script.",steps);
-   File.WriteAllText(dialog.FileName,JsonSerializer.Serialize(data,new JsonSerializerOptions{WriteIndented=true}));
-   stepsDirty=false;Status($"Exported {steps.Count} steps. Earlier captures retain the value-inclusion setting used when captured.");
+   bool script=dialog.FilterIndex==1;
+   File.WriteAllText(dialog.FileName,script?ScriptExport.Render(steps):JsonSerializer.Serialize(data,new JsonSerializerOptions{WriteIndented=true}),System.Text.Encoding.UTF8);
+   if(!script)stepsDirty=false;
+   Status(script?"Saved SAP-style script draft. Review TODOs; export JSON too to preserve the full snapshots.":$"Exported {steps.Count} steps. Earlier captures retain the value-inclusion setting used when captured.");
   }catch(Exception ex){Status("Export failed: "+ex.Message);}
  }
 }

@@ -94,3 +94,8 @@ API reference: https://help.sap.com/doc/9215986e54174174854b0af6bb14305a/770.03/
 The light workspace includes a session toolbar, resizable screen/control/details panels, a numbered capture timeline, an action editor and a live SAP-style script preview. JSON export preserves the full capture sequence.
 
 Saved sessions opens exported JSON sequences for review and continued capture. Settings contains the optional auto-refresh switch.
+
+
+Version 1.4.1: simplified capture workspace
+
+Choose a session, click Start capture, then perform one action in SAP and press Ctrl+Alt+F8. Repeat for each step, stop, describe the action/control, then Save script. The hotkey also starts the first capture. Inspect screen controls is optional and collapsed initially. Capture failures now show a visible error and do not add an empty step. This is manual snapshot capture, not automatic SAP event recording.

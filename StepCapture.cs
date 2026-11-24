@@ -136,7 +136,7 @@ public sealed partial class Controller {
 
  IntPtr Hotkey(IntPtr hwnd,int message,IntPtr wp,IntPtr lp,ref bool handled){
 
-  if(message==0x0312&&wp.ToInt32()==HotkeyId){handled=true;if(recording&&!busy)w.Dispatcher.InvokeAsync(async()=>await Capture(true));}
+  if(message==0x0312&&wp.ToInt32()==HotkeyId){handled=true;if(!busy)w.Dispatcher.InvokeAsync(()=>Get<Button>("TakeStep").RaiseEvent(new RoutedEventArgs(Button.ClickEvent)));}
 
   return IntPtr.Zero;
 
@@ -146,9 +146,9 @@ public sealed partial class Controller {
 
   Get<Button>("StartSteps").IsEnabled=!busy&&!recording&&Get<ComboBox>("Sessions").SelectedItem!=null;
 
-  Get<Button>("StartSteps").Content=steps.Count>0?"Resume":"Start";
+  Get<Button>("StartSteps").Content=steps.Count>0?"Resume capture":"Start capture";
 
-  Get<Button>("TakeStep").IsEnabled=!busy&&Get<ComboBox>("Sessions").SelectedItem!=null;
+  Get<Button>("TakeStep").IsEnabled=recording&&!busy&&Get<ComboBox>("Sessions").SelectedItem!=null;
 
   Get<Button>("StopSteps").IsEnabled=recording&&!busy;
 
@@ -170,9 +170,11 @@ public sealed partial class Controller {
 
  void UpdateStepStatus(){
 
+  Get<Button>("TakeStep").Visibility=recording?Visibility.Visible:Visibility.Collapsed;
+  Get<Button>("StartSteps").Visibility=recording?Visibility.Collapsed:Visibility.Visible;
   string key=hotkeyRegistered?"Ctrl + Alt + F8":"Hotkey unavailable — use Capture step";
 
-  Get<TextBlock>("StepStatus").Text=$"{(recording?"CAPTURING":"Stopped")} · {steps.Count} steps · {key}";
+  Get<TextBlock>("StepStatus").Text=$"{(recording?"Ready for next step":"Not capturing")} · {steps.Count} steps · {key}";
 
  }
 
@@ -284,9 +286,9 @@ public sealed partial class Controller {
 
   if(!demo)return;
 
-  recording=true;Get<Expander>("StepExpander").IsExpanded=true;
-
-  await Capture(true);
+  bool handled=false;Hotkey(IntPtr.Zero,0x0312,new IntPtr(HotkeyId),IntPtr.Zero,ref handled);
+  await w.Dispatcher.InvokeAsync(()=>{},System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+  if(!handled||!recording||steps.Count!=1)throw new Exception("Hotkey must start the first capture");
 
   var first=steps[0];
 

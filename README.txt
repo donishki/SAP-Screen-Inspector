@@ -80,3 +80,8 @@ prompts first. Start becomes Resume after stopping; New starts a fresh sequence.
 SAP-style text export: choose Export steps, then SAP script text. Label actions and controls and supply required action values. Unsupported actions become TODO comments. Save JSON too to preserve snapshots.
 
 Saved sessions opens exported JSON sequences for review and continued capture. Settings contains the optional auto-refresh switch.
+
+
+Version 1.4.1: simplified capture workspace
+
+Choose a session, click Start capture, then perform one action in SAP and press Ctrl+Alt+F8. Repeat for each step, stop, describe the action/control, then Save script. The hotkey also starts the first capture. Inspect screen controls is optional and collapsed initially. Capture failures now show a visible error and do not add an empty step. This is manual snapshot capture, not automatic SAP event recording.

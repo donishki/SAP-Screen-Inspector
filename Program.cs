@@ -180,11 +180,11 @@ public sealed partial class Controller {
 
 
 
-  if(busy)return;busy=true;Enable();Status("Looking for SAP sessionsâ€¦");
+  if(busy)return;busy=true;Enable();Status("Looking for SAP sessions…");
 
 
 
-  try{var data=demo?new Reply(Sessions:[Demo().Session]):await Reader.Run(new("sessions"));if(closed)return;var box=Get<ComboBox>("Sessions");box.ItemsSource=data.Sessions;box.SelectedIndex=data.Sessions?.Count>0?0:-1;Get<TextBlock>("ConnectionStatus").Text=demo?"Demo session":data.Sessions?.Count>0?"SAP session available":"No SAP session";Status(demo?"DEMO â€” sample controls only; no SAP connection.":"Select a session, navigate in SAP, then capture the screen.");}
+  try{var data=demo?new Reply(Sessions:[Demo().Session]):await Reader.Run(new("sessions"));if(closed)return;var box=Get<ComboBox>("Sessions");box.ItemsSource=data.Sessions;box.SelectedIndex=data.Sessions?.Count>0?0:-1;Get<TextBlock>("ConnectionStatus").Text=demo?"Demo session":data.Sessions?.Count>0?"SAP session available":"No SAP session";Status(demo?"DEMO — sample controls only; no SAP connection.":"Select a session, navigate in SAP, then capture the screen.");}
 
 
 
@@ -200,7 +200,7 @@ public sealed partial class Controller {
 
 
 
-  if(busy||Get<ComboBox>("Sessions").SelectedItem is not SapSession session)return;busy=true;Enable();Status("Reading screen controlsâ€¦");
+  if(busy||Get<ComboBox>("Sessions").SelectedItem is not SapSession session)return;busy=true;Enable();Status("Reading screen controls…");
 
 
 
@@ -216,7 +216,7 @@ public sealed partial class Controller {
 
 
 
-   var next=result.Snapshot!;var old=liveSnapshot?.Session.Id==next.Session.Id?liveSnapshot.Controls.GroupBy(r=>r.Id).ToDictionary(g=>g.Key,g=>g.First()):null;
+   var next=result.Snapshot??throw new InvalidOperationException("SAP returned no screen. Reload sessions and retry.");if(next.Controls.Count==0)throw new InvalidOperationException("SAP returned no controls. Ensure the selected session has a visible, fully loaded screen.");var old=liveSnapshot?.Session.Id==next.Session.Id?liveSnapshot.Controls.GroupBy(r=>r.Id).ToDictionary(g=>g.Key,g=>g.First()):null;
 
 
 
@@ -236,7 +236,7 @@ public sealed partial class Controller {
 
 
 
-   Filter();BuildTree();if(demo)Get<DataGrid>("Table").SelectedItem=rows.FirstOrDefault(r=>r.Name=="P_MATNR");Get<TextBlock>("Mode").Text=$"{next.Session.Transaction}  ·  Recording disabled: {Flag(next.Session.Recording)}  ·  Read-only mode: {Flag(next.Session.ReadOnly)}";
+   Filter();BuildTree();if(demo)Get<DataGrid>("Table").SelectedItem=rows.FirstOrDefault(r=>r.Name=="P_MATNR");Get<TextBlock>("Mode").Text=$"{next.Session.Transaction}  ·  SAP recorder disabled: {Flag(next.Session.Recording)}  ·  Read-only mode: {Flag(next.Session.ReadOnly)}";
 
 
 
@@ -246,7 +246,7 @@ public sealed partial class Controller {
 
    if(saveStep)AddStep(next);
 
-  }catch(Exception ex){Get<CheckBox>("Auto").IsChecked=false;if(saveStep){recording=false;UpdateStepStatus();}Status(ex.Message+" Capture paused; no step was added.");}finally{busy=false;if(!closed)Enable();}
+  }catch(Exception ex){Get<CheckBox>("Auto").IsChecked=false;if(saveStep){recording=false;UpdateStepStatus();}Status(ex.Message+" Capture paused; no step was added.");if(saveStep)MessageBox.Show(w,ex.Message+"\n\nNo step was saved. Wait for SAP to finish loading, then click Resume capture.","Capture failed",MessageBoxButton.OK,MessageBoxImage.Warning);}finally{busy=false;if(!closed)Enable();}
 
 
 

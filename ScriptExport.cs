@@ -20,6 +20,12 @@ public static class ScriptExport {
    var step=steps[i];
    b.AppendLine();b.AppendLine($"' Step {step.Number}: {Line(step.Action)}");
    if(step.Notes.Length>0)b.AppendLine("' "+Line(step.Notes));
+   if(step.RequiresReview){
+    b.AppendLine("' TODO: OBSERVED / INFERRED action; verify target and behavior before writing a replay command.");
+    b.AppendLine("' Control: "+Line(step.ControlId));
+    if(step.Argument.Length>0)b.AppendLine("' Sampled value: "+Line(step.Argument));
+    continue;
+   }
    if(step.RecordedScript!=null){b.AppendLine(step.RecordedScript);continue;}
    if(step.Action=="Starting screen")continue;
    var current=step.Screen.Controls.FirstOrDefault(c=>c.ShortId==step.ControlId);

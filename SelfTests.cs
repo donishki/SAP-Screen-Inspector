@@ -5,6 +5,7 @@ public static class SelfTests {
   void Check(bool ok,string message){if(!ok)throw new Exception(message);}
   ScriptExportTests.Run();
   RecorderTests.Run();
+  ObservationTests.Run().GetAwaiter().GetResult();
   var password=new FakeNode{Id="wnd[0]/usr/pwd",Type="GuiPasswordField",Name="Secret",Secret=true};
   var field=new FakeNode{Id="wnd[0]/usr/txt",Type="GuiTextField",Name="Serial",Text="DEMO-SERIAL-001"};
   var window=new FakeNode{Id="wnd[0]",Type="GuiMainWindow",Name="Window",Children=[field,password]};
@@ -19,6 +20,9 @@ public static class SelfTests {
   var visible=Reader.Read(new("capture",sessions[0],true),engine).Snapshot!;
   Check(visible.Controls.Single(r=>r.Name=="Serial").Text=="DEMO-SERIAL-001","Values enabled");
   Check(password.TextReads==0,"Password read with values enabled");
+  var observed=Reader.Read(new("capture",sessions[0],true,true),engine).Snapshot!;
+  Check(password.TextReads==0&&observed.Controls.Single(r=>r.Name=="Secret").ObservedState=="","Observed password exclusion");
+  Check(observed.Controls.Single(r=>r.Name=="Serial").ObservedState=="DEMO-SERIAL-001","Observed field value");
   Check(visible.Controls.Single(r=>r.Name=="Secret").Text=="[password excluded]","Password marker");
   session.Info.User="Different";
   bool rejected=false;try{Reader.Read(new("capture",sessions[0]),engine);}catch(InvalidOperationException){rejected=true;}

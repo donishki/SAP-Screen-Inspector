@@ -211,6 +211,7 @@
         <Popup x:Name="SettingsPopup" PlacementTarget="{Binding ElementName=Settings}" Placement="Bottom" StaysOpen="False" AllowsTransparency="True">
           <Border Background="White" BorderBrush="#CBD5E1" BorderThickness="1" CornerRadius="9" Padding="20" Width="320">
             <StackPanel>
+              <CheckBox x:Name="ObservedMode" Content="Use observed recording (approximate)" Margin="0,0,0,12" />
               <TextBlock Text="Capture settings" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,16" />
               <CheckBox x:Name="Auto" Content="Auto-refresh" VerticalAlignment="Center" Margin="0" />
               <TextBlock Text="Auto-refresh updates controls every three seconds while step capture is stopped." TextWrapping="Wrap" Foreground="#64748B" Margin="0,12,0,0" />
@@ -373,7 +374,7 @@
             <Button x:Name="NewSteps" Content="New sequence" Grid.Column="2" Padding="10,5" />
           </Grid>
           <TextBlock DockPanel.Dock="Top" Text="1. Record    -    2. Perform all your steps in SAP    -    3. Stop and save" TextWrapping="Wrap" Foreground="#60748A" Margin="0,8,0,16" />
-          <TextBlock DockPanel.Dock="Top" Text="SAP actions and entered values are recorded automatically. Passwords are omitted. SAP may deliver pending actions when you press Stop." TextWrapping="Wrap" Margin="0,0,0,16" />
+          <TextBlock x:Name="RecordingHint" DockPanel.Dock="Top" Text="Record collects your steps. If SAP disables native recording, observed mode is selected automatically; inferred actions require review." TextWrapping="Wrap" Margin="0,0,0,16" />
           <Expander Header="Timeline and action details" IsExpanded="True" x:Name="StepExpander" Template="{StaticResource PlainExpander}">
             <Grid MinHeight="260" Margin="0,8,0,0">
               <Grid.ColumnDefinitions>
@@ -393,7 +394,7 @@
                         <TextBlock Text="{Binding Number, StringFormat=00}" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center" />
                       </Border>
                       <StackPanel Grid.Column="1" Margin="10,0,0,0">
-                        <TextBlock Text="{Binding Action}" FontWeight="SemiBold" FontSize="14" />
+                        <TextBlock Text="{Binding DisplayAction}" FontWeight="SemiBold" FontSize="14" TextWrapping="Wrap" />
                         <TextBlock Text="{Binding Screen.Session.Transaction}" Foreground="#64748B" FontSize="11" Margin="0,4,0,0" />
                       </StackPanel>
                     </Grid>

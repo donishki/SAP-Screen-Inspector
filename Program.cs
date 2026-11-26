@@ -208,7 +208,7 @@ public sealed partial class Controller {
 
 
 
-   var result=demo?new Reply(Snapshot:Demo()):await Reader.Run(new("capture",session,Get<CheckBox>("Values").IsChecked==true));
+   var result=demo?new Reply(Snapshot:Demo()):await Reader.Run(new("capture",session,Get<CheckBox>("Values").IsChecked==true,saveStep));
 
 
 

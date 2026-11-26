@@ -1,31 +1,41 @@
-﻿SAP SCREEN INSPECTOR 1.5.0
+﻿SAP SCREEN INSPECTOR 1.6.0
 
-1. Open SAP GUI for Windows and log in.
-2. Select your SAP session and press Record.
-3. Go to SAP and perform ALL your steps.
-4. Return and press Stop.
-5. Review the timeline, then Save script or export JSON.
+1. Open SAP GUI for Windows and select your session in the inspector.
+2. Enable Screen values first if you need field contents in observed mode.
+3. Press Record, go to SAP, and perform all your steps.
+4. Return and press Stop. Review the timeline and export script text or JSON.
 
-No per-step hotkey is needed. SAP may deliver pending actions only at Stop.
-Resume recording appends to the same session; New sequence starts fresh.
-Recording requires SAP scripting AND recording permission. If disabled, the
-app reports it. Screen inspection remains available while stopped.
+When SAP disables native recording, observed mode starts automatically.
+Settings > Use observed recording also lets you select this mode manually.
+It observes clicks/navigation keys in the selected SAP session windows and
+repeatedly reads screens. It does not enable SAP recording or alter permissions.
+SAP scripting read access must still be available.
 
-Recording includes entered action values regardless of the Screen values
-snapshot switch. Password control commands are omitted. Keep exports private.
-Only SAP scripting-supported actions are recorded, not OS dialogs or backend
-preset values. Review scripts before use. The inspector never runs them.
+Observed mode is approximate. Fast actions, transient dialogs, grids and stale
+control positions can cause missing or incorrectly inferred steps. Field changes
+can also come from SAP itself. New windows are monitored only after discovery.
+Double-clicks appear as separate clicks. Review every observed action.
+Observed steps export as TODO comments, not automatic replay commands.
+JSON preserves screen control metadata, observations and review markers;
+no bitmap screenshots are captured.
 
-The initial screen is a snapshot; later events contain affected controls and
-commands, not full historical screens. Export JSON to preserve the sequence.
-Data remains in memory until exported. Closing warns about unsaved data.
+Raw typed characters and clipboard contents are never recorded by the input
+monitor. Screen values controls sampled field contents in observed mode.
+Password controls are excluded. Native mode still includes action arguments.
+Exports contain session identity and potentially business data; keep them private.
 
-Both x86 and x64 builds are self-contained. Use the one compatible with your
-SAP installation. In Citrix/RDP, run inside the same environment as SAP.
+Stop removes input monitoring immediately and attempts a final screen sample.
+Sampling errors mark the sequence incomplete and suspend input observations
+until a valid sample re-establishes the selected session/window identity.
+Data stays in memory until exported. Closing warns about unsaved data.
 
---demo: sample workspace without SAP
---self-test: simulated recording, reader and export checks
---smoke: synthetic UI/timeline/export checks and preview
+Both Windows x86 and x64 builds are portable and self-contained. Use the one
+compatible with your SAP scripting installation. Run inside the same Citrix/RDP
+environment as SAP when applicable.
 
-Live SAP compatibility must be checked in your environment.
-See README.md for requirements, limitations and build instructions.
+--demo: synthetic workspace without SAP
+--self-test: simulated recording, observation, reader and export tests
+--smoke: synthetic UI and Windows hook lifecycle checks
+
+Live SAP compatibility still requires verification in your environment.
+See README.md for details and build instructions.

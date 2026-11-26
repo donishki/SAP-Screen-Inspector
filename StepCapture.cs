@@ -19,6 +19,9 @@ namespace Inspector;
 public sealed class CapturedStep {
 
  public string? RecordedScript{get;set;}
+ public bool RequiresReview{get;set;}
+ [System.Text.Json.Serialization.JsonIgnore]
+ public string DisplayAction=>Action+(RequiresReview?" (observed)":"");
 
  public int Number{get;set;}
 
@@ -50,6 +53,8 @@ public sealed partial class Controller {
 
  bool recording,editingStep,stepsDirty;
  SapRecorder? recorder;
+ ObservedRecorder? observer;
+ bool stopping;
  bool recordingIncomplete;
 
  Snapshot? liveSnapshot;
@@ -66,7 +71,7 @@ public sealed partial class Controller {
 
  void InitializeSteps(){
 
-  Get<ComboBox>("StepAction").ItemsSource=new[]{"Unspecified","Starting screen","Click","Double-click","Enter text","Press key","Select tab","Choose item","Other","SAP action","Password omitted","Recording error"};
+  Get<ComboBox>("StepAction").ItemsSource=new[]{"Unspecified","Starting screen","Click","Double-click","Enter text","Press key","Select tab","Choose item","Other","SAP action","Password omitted","Recording error","Screen changed","Value changed","Scroll"};
 
   Get<Button>("StartSteps").Click+=async(_,_)=>{
 
@@ -86,6 +91,18 @@ public sealed partial class Controller {
    if(closed)return;
    if(recording&&!demo){
     try {
+     var initial=steps[^1].Screen;
+     if(initial.Session.Recording is "1" or "True" || Get<CheckBox>("ObservedMode").IsChecked==true){
+      observer=new ObservedRecorder(initial,Get<CheckBox>("Values").IsChecked==true);
+      observer.Step+=AddObservedStep;
+      observer.Gap+=message=>{
+       recordingIncomplete=true;
+       AddObservedStep(new(){Captured=DateTime.Now,Action="Recording error",RequiresReview=true,Screen=steps[^1].Screen,Notes=message});
+       Status(message);
+      };
+      observer.Start();
+      Status("Observed recording active. Work in SAP, then press Stop. Actions are approximate; review the sequence. Screen values "+(initial.ValuesIncluded?"included.":"excluded."));
+     }else{
      recorder=new SapRecorder();
      recorder.Changed+=AddRecordedStep;
      recorder.Failed+=message=>{
@@ -95,8 +112,10 @@ public sealed partial class Controller {
      };
      recorder.Start((SapSession)Get<ComboBox>("Sessions").SelectedItem);
      Status("Recording SAP actions. Perform all your steps in SAP, then return and press Stop. Action values are included; passwords are omitted.");
+     }
     } catch(Exception ex){
-     recorder=null;recording=false;
+     observer=null;recorder=null;recording=false;
+     Enable();UpdateStepStatus();
      Status("Recording could not start: "+ex.Message);
      MessageBox.Show(w,ex.Message,"Recording unavailable",MessageBoxButton.OK,MessageBoxImage.Warning);
     }
@@ -109,12 +128,12 @@ public sealed partial class Controller {
 
    if(!recording){Get<Button>("StartSteps").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));return;}
 
-   if(!demo){StopRecording();return;}
+   if(!demo){await StopRecording();return;}
    await Capture(true);
 
   };
 
-  Get<Button>("StopSteps").Click+=(_,_)=>StopRecording();
+  Get<Button>("StopSteps").Click+=async(_,_)=>await StopRecording();
 
   Get<Button>("NewSteps").Click+=(_,_)=>{
 
@@ -146,10 +165,13 @@ public sealed partial class Controller {
 
   };
 
-  w.Closing+=(_,e)=>{
+  w.Closing+=async(_,e)=>{
    if(recording){
-    StopRecording();
-    if(recording){e.Cancel=true;return;}
+    e.Cancel=true;
+    if(stopping)return;
+    await StopRecording();
+    if(!recording){var deferredClose=w.Dispatcher.BeginInvoke(new Action(w.Close));}
+    return;
    }
 
    if(stepsDirty&&MessageBox.Show(w,"This sequence has unexported changes. Close without exporting?","Step capture",MessageBoxButton.YesNo,MessageBoxImage.Question)!=MessageBoxResult.Yes)e.Cancel=true;
@@ -176,7 +198,9 @@ public sealed partial class Controller {
 
   Get<Button>("TakeStep").IsEnabled=recording&&!busy&&Get<ComboBox>("Sessions").SelectedItem!=null;
 
-  Get<Button>("StopSteps").IsEnabled=recording&&!busy;
+  Get<Button>("StopSteps").IsEnabled=recording&&!busy&&!stopping;
+  Get<CheckBox>("Values").IsEnabled=!busy&&!recording;
+  Get<CheckBox>("ObservedMode").IsEnabled=!busy&&!recording;
 
   Get<Button>("NewSteps").IsEnabled=!busy&&!recording&&steps.Count>0;
 
@@ -199,7 +223,8 @@ public sealed partial class Controller {
 
   Get<Button>("TakeStep").Visibility=Visibility.Collapsed;
   Get<Button>("StartSteps").Visibility=recording?Visibility.Collapsed:Visibility.Visible;
-  Get<TextBlock>("StepStatus").Text=$"{(recording?"Recording - work in SAP, then press Stop":"Stopped")} | {steps.Count} steps"+(recordingIncomplete?" | INCOMPLETE: recording error":"");
+  Get<TextBlock>("StepStatus").Text=$"{(stopping?"Stopping - collecting final screen":recording?(observer!=null?"Observing SAP - approximate":"Recording SAP"):"Stopped")} | {steps.Count} steps"+(recordingIncomplete?" | INCOMPLETE: recording error":steps.Any(s=>s.RequiresReview)?" | Review observed steps":"");
+  Get<TextBlock>("RecordingHint").Text=observer!=null||steps.Any(s=>s.RequiresReview)?"Observed mode: clicks, navigation keys and screen changes. Targets are inferred; fast actions may be missed. Screen values controls field-value capture. Review before use.":"Native recording captures SAP events and action values. If SAP disables recording, observed mode is selected automatically. Password controls are omitted.";
 
  }
 
@@ -229,15 +254,21 @@ public sealed partial class Controller {
   steps.Add(new(){Number=steps.Count+1,Captured=now,Action=action,ControlId=id,RecordedScript=script,Screen=screen});
   stepsDirty=true;RefreshSteps(steps[^1]);UpdateStepStatus();
  }
- void StopRecording(){
+ void AddObservedStep(CapturedStep step){
+  step.Number=steps.Count+1;steps.Add(step);stepsDirty=true;
+  RefreshSteps(step);UpdateStepStatus();
+ }
+ async Task StopRecording(){
+  if(stopping)return;
+  stopping=true;Enable();UpdateStepStatus();
   try {
+   if(observer!=null){await observer.Stop();observer=null;}
    recorder?.Stop();recorder=null;recording=false;
-   Enable();UpdateStepStatus();
-   Status(recordingIncomplete?"Stopped. Some events could not be recorded; review the error steps.":$"Stopped. {steps.Count} steps collected. Review and save your script or JSON sequence.");
+   Status(recordingIncomplete?"Stopped. Sampling gaps or recording errors occurred; review the flagged steps.":$"Stopped. {steps.Count} steps collected. Review and save your script or JSON sequence.");
   }catch(Exception ex){
-   Status("Could not stop SAP recording: "+ex.Message+". Retry Stop; collected steps are retained.");
-   MessageBox.Show(w,"Could not stop SAP recording. Wait for SAP to finish and retry Stop.\n\n"+ex.Message,"Stop recording",MessageBoxButton.OK,MessageBoxImage.Warning);
-  }
+   Status("Could not stop recording: "+ex.Message+". Collected steps are retained.");
+   MessageBox.Show(w,"Could not stop recording. Wait for SAP to finish and retry Stop.\n\n"+ex.Message,"Stop recording",MessageBoxButton.OK,MessageBoxImage.Warning);
+  }finally{stopping=false;Enable();UpdateStepStatus();}
  }
 
  void RefreshSteps(CapturedStep? selectedStep=null){
@@ -381,13 +412,26 @@ public sealed partial class Controller {
   var eventRoundtrip=ReadSequence(JsonSerializer.Serialize(new StepSequence("SAP-Screen-Inspector-steps",1,DateTime.Now,"SAP recording",steps)));
   if(eventRoundtrip.Steps[2].RecordedScript!=steps[2].RecordedScript)throw new Exception("Recorded commands lost in JSON");
   File.AppendAllText(Path.Combine(AppContext.BaseDirectory,"step-test.txt")," PASS: recorded command timeline, Stop, script export and recorded JSON roundtrip.");
+  // Exercise actual Win32 hook install/uninstall against this synthetic demo window only.
+  var demoWindow=new ObservedWindow(unchecked((uint)new WindowInteropHelper(w).Handle.ToInt64()),"wnd[0]",(uint)Environment.ProcessId);
+  var observedBefore=Demo() with {Windows=[demoWindow]};
+  var observedAfter=observedBefore with {Captured=DateTime.Now,Session=observedBefore.Session with {Transaction="DEMO-NEXT"}};
+  observer=new ObservedRecorder(observedBefore,false,(_,_)=>Task.FromResult(new Reply(Snapshot:observedAfter)));
+  observer.Step+=AddObservedStep;
+  observer.Start();recording=true;Enable();UpdateStepStatus();
+  if(Get<CheckBox>("Values").IsEnabled||Get<Button>("ExportSteps").IsEnabled)throw new Exception("Observed recording controls not locked");
+  await StopRecording();
+  if(recording||observer!=null||!steps[^1].RequiresReview||!previewText.Contains("OBSERVED / INFERRED"))throw new Exception("Observed Stop/preview failed");
+  var observedRoundtrip=ReadSequence(JsonSerializer.Serialize(new StepSequence("SAP-Screen-Inspector-steps",1,DateTime.Now,"Observed",steps)));
+  if(!observedRoundtrip.Steps[^1].RequiresReview)throw new Exception("Observation marker lost in JSON");
+  File.AppendAllText(Path.Combine(AppContext.BaseDirectory,"step-test.txt")," PASS: Windows input hook lifecycle, observed mode controls, final screen sample, review marker and JSON export.");
   stepsDirty=false;Enable();UpdateStepStatus();
 
  }
 
  void ExportSequence(bool json=false){
 
-  if(steps.Count==0)return;
+  if(steps.Count==0||recording||stopping)return;
 
   var dialog=new SaveFileDialog{Filter="SAP script text (*.txt)|*.txt|Step sequence (*.json)|*.json",FilterIndex=json?2:1,FileName=$"SAP-steps-{DateTime.Now:yyyyMMdd-HHmmss}."+(json?"json":"txt")};
 
@@ -395,7 +439,7 @@ public sealed partial class Controller {
 
   try{
 
-   var data=new StepSequence("SAP-Screen-Inspector-steps",1,DateTime.Now,"SAP native recording events with an initial screen snapshot. Recorded commands include action values; passwords omitted. Legacy steps may be manually annotated.",steps);
+   var data=new StepSequence("SAP-Screen-Inspector-steps",1,DateTime.Now,"Native SAP events or observed input/screen samples. RequiresReview marks approximate observations; these export as comments only. Screen values controls observed field values. Passwords omitted.",steps);
 
    bool script=dialog.FilterIndex==1;
 

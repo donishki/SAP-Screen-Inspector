@@ -61,6 +61,7 @@ public sealed partial class Controller {
    var data=ReadSequence(File.ReadAllText(dialog.FileName));
    if(stepsDirty&&MessageBox.Show(w,"Replace the current unexported sequence?","Open saved session",MessageBoxButton.YesNo,MessageBoxImage.Question)!=MessageBoxResult.Yes)return;
    Get<CheckBox>("Auto").IsChecked=false;
+   recordingIncomplete=data.Steps.Any(s=>s.Action=="Recording error");
    steps.Clear();steps.AddRange(data.Steps);stepsDirty=false;RefreshSteps();UpdateStepStatus();
    Status($"Opened {steps.Count} saved steps. Review or export; select the original SAP session to resume capture.");
   }catch(Exception ex){Status("Could not open sequence: "+ex.Message);}

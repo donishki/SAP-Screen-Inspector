@@ -203,7 +203,7 @@
         <Border Background="#FFF2BB" BorderBrush="#FFCC00" BorderThickness="0,0,0,3" CornerRadius="6,6,0,0" Padding="18,8">
           <TextBlock Text="Workspace" FontSize="16" FontWeight="SemiBold" />
         </Border>
-        <TextBlock x:Name="Mode" Foreground="#60748A" Text="Manual step capture · no SAP actions are executed" VerticalAlignment="Center" Grid.Column="2" HorizontalAlignment="Right" FontSize="11" />
+        <TextBlock x:Name="Mode" Foreground="#60748A" Text="Native SAP recording - no SAP actions are executed" VerticalAlignment="Center" Grid.Column="2" HorizontalAlignment="Right" FontSize="11" />
         <StackPanel Orientation="Horizontal" Grid.Column="1" Margin="20,0,0,0">
           <Button x:Name="OpenSession" Content="▱  Saved sessions" Background="Transparent" BorderBrush="Transparent" FontSize="16" />
           <Button x:Name="Settings" Content="⚙  Settings" Background="Transparent" BorderBrush="Transparent" FontSize="16" />
@@ -245,8 +245,8 @@
         <ComboBox x:Name="Sessions" DisplayMemberPath="Label" Grid.Column="1" />
         <StackPanel Orientation="Horizontal" Margin="12,0,0,0" Grid.Column="2">
           <Button x:Name="Reload" Content="↻" ToolTip="Reload sessions" FontSize="20" Padding="14,6" />
-          <CheckBox x:Name="Values" Content="Include values" VerticalAlignment="Center" Margin="20,0,24,0" Style="{StaticResource Switch}" />
-          <Button x:Name="StartSteps" Content="Start capture" Background="#FFCC00" FontWeight="SemiBold" />
+          <CheckBox x:Name="Values" Content="Screen values" VerticalAlignment="Center" Margin="20,0,24,0" Style="{StaticResource Switch}" />
+          <Button x:Name="StartSteps" Content="Record" Background="#FFCC00" FontWeight="SemiBold" />
           <Button x:Name="TakeStep" Content="Capture next step" Background="White" FontWeight="SemiBold" ToolTip="Ctrl + Alt + F8" FontSize="16" Padding="18,10" />
           <Button x:Name="StopSteps" Content="■  Stop" />
         </StackPanel>
@@ -369,11 +369,11 @@
               <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <TextBlock Text="Captured steps" FontSize="19" FontWeight="SemiBold" />
-            <TextBlock x:Name="StepStatus" Text="Start a sequence, then capture after each action in SAP." Foreground="#60748A" Grid.Column="1" Margin="18,0,0,0" VerticalAlignment="Center" FontSize="11" />
+            <TextBlock x:Name="StepStatus" Text="Press Record, work in SAP, then press Stop." Foreground="#60748A" Grid.Column="1" Margin="18,0,0,0" VerticalAlignment="Center" FontSize="11" />
             <Button x:Name="NewSteps" Content="New sequence" Grid.Column="2" Padding="10,5" />
           </Grid>
-          <TextBlock DockPanel.Dock="Top" Text="1. Start capture    →    2. Perform an action in SAP, then press Ctrl+Alt+F8    →    3. Stop and save" TextWrapping="Wrap" Foreground="#60748A" Margin="0,8,0,16" />
-          <TextBlock DockPanel.Dock="Top" Text="Each capture saves the screen IDs. Choose the action and control below to build your script; clicks are not recorded automatically." TextWrapping="Wrap" Margin="0,0,0,16" />
+          <TextBlock DockPanel.Dock="Top" Text="1. Record    -    2. Perform all your steps in SAP    -    3. Stop and save" TextWrapping="Wrap" Foreground="#60748A" Margin="0,8,0,16" />
+          <TextBlock DockPanel.Dock="Top" Text="SAP actions and entered values are recorded automatically. Passwords are omitted. SAP may deliver pending actions when you press Stop." TextWrapping="Wrap" Margin="0,0,0,16" />
           <Expander Header="Timeline and action details" IsExpanded="True" x:Name="StepExpander" Template="{StaticResource PlainExpander}">
             <Grid MinHeight="260" Margin="0,8,0,0">
               <Grid.ColumnDefinitions>

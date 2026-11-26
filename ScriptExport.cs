@@ -8,7 +8,7 @@ public static class ScriptExport {
  public static string Render(IReadOnlyList<CapturedStep> steps){
   var b=new StringBuilder();
   b.AppendLine("' SAP Screen Inspector - SAP-style VBScript draft");
-  b.AppendLine("' Built from manually annotated snapshots, not SAP recorder events.");
+  b.AppendLine("' Native SAP commands where recorded; manually annotated steps may contain TODOs.");
   b.AppendLine("' Review all commands and TODOs before use. Connection/session indices may change.");
   var match=Regex.Match(steps.FirstOrDefault()?.Screen.Session.Id??"",@"con\[(\d+)\]/ses\[(\d+)\]");
   string connection=match.Success?match.Groups[1].Value:"0",session=match.Success?match.Groups[2].Value:"0";
@@ -20,6 +20,7 @@ public static class ScriptExport {
    var step=steps[i];
    b.AppendLine();b.AppendLine($"' Step {step.Number}: {Line(step.Action)}");
    if(step.Notes.Length>0)b.AppendLine("' "+Line(step.Notes));
+   if(step.RecordedScript!=null){b.AppendLine(step.RecordedScript);continue;}
    if(step.Action=="Starting screen")continue;
    var current=step.Screen.Controls.FirstOrDefault(c=>c.ShortId==step.ControlId);
    var previous=i>0?steps[i-1].Screen.Controls.FirstOrDefault(c=>c.ShortId==step.ControlId):null;

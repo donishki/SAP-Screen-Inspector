@@ -18,6 +18,8 @@ namespace Inspector;
 
 public sealed class CapturedStep {
 
+ public string? RecordedScript{get;set;}
+
  public int Number{get;set;}
 
  public DateTime Captured{get;set;}
@@ -47,6 +49,8 @@ public sealed partial class Controller {
  readonly List<CapturedStep> steps=[];
 
  bool recording,editingStep,stepsDirty;
+ SapRecorder? recorder;
+ bool recordingIncomplete;
 
  Snapshot? liveSnapshot;
 
@@ -62,15 +66,15 @@ public sealed partial class Controller {
 
  void InitializeSteps(){
 
-  Get<ComboBox>("StepAction").ItemsSource=new[]{"Unspecified","Starting screen","Click","Double-click","Enter text","Press key","Select tab","Choose item","Other"};
+  Get<ComboBox>("StepAction").ItemsSource=new[]{"Unspecified","Starting screen","Click","Double-click","Enter text","Press key","Select tab","Choose item","Other","SAP action","Password omitted","Recording error"};
 
   Get<Button>("StartSteps").Click+=async(_,_)=>{
 
-   if(busy||recording)return;
+   if(busy||recording||Get<ComboBox>("Sessions").SelectedItem is not SapSession)return;
 
    if(steps.Count>0&&Get<ComboBox>("Sessions").SelectedItem is SapSession selectedSession&&
 
-      (steps[0].Screen.Session.Id!=selectedSession.Id||steps[0].Screen.Session.System!=selectedSession.System||steps[0].Screen.Session.User!=selectedSession.User)){
+      (steps[0].Screen.Session.Id!=selectedSession.Id||steps[0].Screen.Session.System!=selectedSession.System||steps[0].Screen.Session.Client!=selectedSession.Client||steps[0].Screen.Session.User!=selectedSession.User)){
 
     Status("Select the original session to resume, or choose New to start another sequence.");return;
 
@@ -79,8 +83,25 @@ public sealed partial class Controller {
    recording=true;Get<CheckBox>("Auto").IsChecked=false;Get<Expander>("StepExpander").IsExpanded=true;Enable();
 
    await Capture(true);
-
-   UpdateStepStatus();
+   if(closed)return;
+   if(recording&&!demo){
+    try {
+     recorder=new SapRecorder();
+     recorder.Changed+=AddRecordedStep;
+     recorder.Failed+=message=>{
+      recordingIncomplete=true;
+      AddRecordedStep("","","' TODO: Recording event missing; sequence incomplete.","Recording error");
+      Status(message);
+     };
+     recorder.Start((SapSession)Get<ComboBox>("Sessions").SelectedItem);
+     Status("Recording SAP actions. Perform all your steps in SAP, then return and press Stop. Action values are included; passwords are omitted.");
+    } catch(Exception ex){
+     recorder=null;recording=false;
+     Status("Recording could not start: "+ex.Message);
+     MessageBox.Show(w,ex.Message,"Recording unavailable",MessageBoxButton.OK,MessageBoxImage.Warning);
+    }
+   }
+   Enable();UpdateStepStatus();
 
   };
 
@@ -88,17 +109,18 @@ public sealed partial class Controller {
 
    if(!recording){Get<Button>("StartSteps").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));return;}
 
+   if(!demo){StopRecording();return;}
    await Capture(true);
 
   };
 
-  Get<Button>("StopSteps").Click+=(_,_)=>{recording=false;Enable();UpdateStepStatus();};
+  Get<Button>("StopSteps").Click+=(_,_)=>StopRecording();
 
   Get<Button>("NewSteps").Click+=(_,_)=>{
 
    if(stepsDirty&&MessageBox.Show(w,"Discard this unexported sequence?","New sequence",MessageBoxButton.YesNo,MessageBoxImage.Question)!=MessageBoxResult.Yes)return;
 
-   recording=false;steps.Clear();stepsDirty=false;RefreshSteps();Enable();UpdateStepStatus();
+   recordingIncomplete=false;recording=false;steps.Clear();stepsDirty=false;RefreshSteps();Enable();UpdateStepStatus();
 
   };
 
@@ -125,6 +147,10 @@ public sealed partial class Controller {
   };
 
   w.Closing+=(_,e)=>{
+   if(recording){
+    StopRecording();
+    if(recording){e.Cancel=true;return;}
+   }
 
    if(stepsDirty&&MessageBox.Show(w,"This sequence has unexported changes. Close without exporting?","Step capture",MessageBoxButton.YesNo,MessageBoxImage.Question)!=MessageBoxResult.Yes)e.Cancel=true;
 
@@ -146,35 +172,34 @@ public sealed partial class Controller {
 
   Get<Button>("StartSteps").IsEnabled=!busy&&!recording&&Get<ComboBox>("Sessions").SelectedItem!=null;
 
-  Get<Button>("StartSteps").Content=steps.Count>0?"Resume capture":"Start capture";
+  Get<Button>("StartSteps").Content=steps.Count>0?"Resume recording":"Record";
 
   Get<Button>("TakeStep").IsEnabled=recording&&!busy&&Get<ComboBox>("Sessions").SelectedItem!=null;
 
   Get<Button>("StopSteps").IsEnabled=recording&&!busy;
 
-  Get<Button>("NewSteps").IsEnabled=!busy&&steps.Count>0;
+  Get<Button>("NewSteps").IsEnabled=!busy&&!recording&&steps.Count>0;
 
-  Get<Button>("ExportSteps").IsEnabled=!busy&&steps.Count>0;
+  Get<Button>("ExportSteps").IsEnabled=!busy&&!recording&&steps.Count>0;
 
-  Get<Button>("ExportJson").IsEnabled=!busy&&steps.Count>0;
+  Get<Button>("ExportJson").IsEnabled=!busy&&!recording&&steps.Count>0;
 
   Get<Button>("Reload").IsEnabled=!busy&&!recording;
+  Get<Button>("Capture").IsEnabled=!busy&&!recording&&Get<ComboBox>("Sessions").SelectedItem!=null;
 
   Get<CheckBox>("Auto").IsEnabled=!recording&&!busy;
 
   bool hasStep=Get<ListBox>("StepList").SelectedItem is CapturedStep;
 
-  foreach(string name in new[]{"StepAction","StepControl","StepArgument","StepNotes"})Get<FrameworkElement>(name).IsEnabled=hasStep&&!busy;
+  foreach(string name in new[]{"StepAction","StepControl","StepArgument","StepNotes"})Get<FrameworkElement>(name).IsEnabled=hasStep&&!busy&&!recording&&((CapturedStep)Get<ListBox>("StepList").SelectedItem).RecordedScript==null;
 
  }
 
  void UpdateStepStatus(){
 
-  Get<Button>("TakeStep").Visibility=recording?Visibility.Visible:Visibility.Collapsed;
+  Get<Button>("TakeStep").Visibility=Visibility.Collapsed;
   Get<Button>("StartSteps").Visibility=recording?Visibility.Collapsed:Visibility.Visible;
-  string key=hotkeyRegistered?"Ctrl + Alt + F8":"Hotkey unavailable — use Capture step";
-
-  Get<TextBlock>("StepStatus").Text=$"{(recording?"Ready for next step":"Not capturing")} · {steps.Count} steps · {key}";
+  Get<TextBlock>("StepStatus").Text=$"{(recording?"Recording - work in SAP, then press Stop":"Stopped")} | {steps.Count} steps"+(recordingIncomplete?" | INCOMPLETE: recording error":"");
 
  }
 
@@ -190,8 +215,29 @@ public sealed partial class Controller {
 
   steps.Add(FreezeStep(screen,steps.Count+1));stepsDirty=true;
 
-  RefreshSteps(steps[^1]);UpdateStepStatus();Status($"Step {steps.Count} saved. Navigate in SAP, then press Ctrl + Alt + F8 for the next step.");
+  RefreshSteps(steps[^1]);UpdateStepStatus();Status($"Step {steps.Count} saved. Starting screen saved.");
 
+ }
+
+ void AddRecordedStep(string id,string type,string script,string action){
+  var baseline=steps.LastOrDefault()?.Screen;
+  if(baseline==null)return;
+  var now=DateTime.Now;
+  // Events describe the affected control, not a full historical screen snapshot.
+  var screen=new Snapshot(now,baseline.Session,[new(id,type,"","","","",0,"","")],true,
+   ["SAP recording event: affected control only; action values are included in the recorded command."]);
+  steps.Add(new(){Number=steps.Count+1,Captured=now,Action=action,ControlId=id,RecordedScript=script,Screen=screen});
+  stepsDirty=true;RefreshSteps(steps[^1]);UpdateStepStatus();
+ }
+ void StopRecording(){
+  try {
+   recorder?.Stop();recorder=null;recording=false;
+   Enable();UpdateStepStatus();
+   Status(recordingIncomplete?"Stopped. Some events could not be recorded; review the error steps.":$"Stopped. {steps.Count} steps collected. Review and save your script or JSON sequence.");
+  }catch(Exception ex){
+   Status("Could not stop SAP recording: "+ex.Message+". Retry Stop; collected steps are retained.");
+   MessageBox.Show(w,"Could not stop SAP recording. Wait for SAP to finish and retry Stop.\n\n"+ex.Message,"Stop recording",MessageBoxButton.OK,MessageBoxImage.Warning);
+  }
  }
 
  void RefreshSteps(CapturedStep? selectedStep=null){
@@ -266,7 +312,7 @@ public sealed partial class Controller {
 
  void SaveStepDetails(){
 
-  if(editingStep||Get<ListBox>("StepList").SelectedItem is not CapturedStep step)return;
+  if(editingStep||Get<ListBox>("StepList").SelectedItem is not CapturedStep step||step.RecordedScript!=null)return;
 
   step.Action=Get<ComboBox>("StepAction").SelectedItem as string??"Unspecified";
 
@@ -328,7 +374,14 @@ public sealed partial class Controller {
 
   Get<DataGrid>("Table").SelectedItem=rows.First(r=>r.Name=="P_MATNR");
 
-  recording=false;stepsDirty=false;Enable();UpdateStepStatus();
+  AddRecordedStep("wnd[0]/usr/txtName","GuiTextField",SapRecorder.RenderCommand("wnd[0]/usr/txtName",new object[]{"SP","text","DEMO-RECORDED"}),"SAP action");
+  AddRecordedStep("wnd[0]","GuiMainWindow",SapRecorder.RenderCommand("wnd[0]",new object[]{"M","sendVKey",0}),"SAP action");
+  Get<Button>("StopSteps").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+  if(recording||steps.Count!=4||!ScriptExport.Render(steps).Contains("DEMO-RECORDED"))throw new Exception("Record/Stop timeline failed");
+  var eventRoundtrip=ReadSequence(JsonSerializer.Serialize(new StepSequence("SAP-Screen-Inspector-steps",1,DateTime.Now,"SAP recording",steps)));
+  if(eventRoundtrip.Steps[2].RecordedScript!=steps[2].RecordedScript)throw new Exception("Recorded commands lost in JSON");
+  File.AppendAllText(Path.Combine(AppContext.BaseDirectory,"step-test.txt")," PASS: recorded command timeline, Stop, script export and recorded JSON roundtrip.");
+  stepsDirty=false;Enable();UpdateStepStatus();
 
  }
 
@@ -342,7 +395,7 @@ public sealed partial class Controller {
 
   try{
 
-   var data=new StepSequence("SAP-Screen-Inspector-steps",1,DateTime.Now,"Manual screen snapshots; action/control labels supplied by the user. Not an event recording or replayable script.",steps);
+   var data=new StepSequence("SAP-Screen-Inspector-steps",1,DateTime.Now,"SAP native recording events with an initial screen snapshot. Recorded commands include action values; passwords omitted. Legacy steps may be manually annotated.",steps);
 
    bool script=dialog.FilterIndex==1;
 
@@ -350,7 +403,7 @@ public sealed partial class Controller {
 
    if(!script)stepsDirty=false;
 
-   Status(script?"Saved SAP-style script draft. Review TODOs; export JSON too to preserve the full snapshots.":$"Exported {steps.Count} steps. Earlier captures retain the value-inclusion setting used when captured.");
+   Status(script?"Saved SAP script. Review before running; export JSON too to preserve the sequence.":$"Exported {steps.Count} steps. Earlier captures retain the value-inclusion setting used when captured.");
 
   }catch(Exception ex){Status("Export failed: "+ex.Message);}
 

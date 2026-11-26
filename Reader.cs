@@ -19,14 +19,14 @@ public record Request(string Action,SapSession? Session=null,bool Values=false);
 public record Reply(List<SapSession>? Sessions=null,Snapshot? Snapshot=null,string? Error=null);
 public static class Reader {
  static string Get(Func<object?> f){try{return Convert.ToString(f())??"";}catch{return "";}}
- static dynamic Engine(){
+ internal static dynamic Engine(){
   dynamic? gui=null;
   try{gui=SapDispatch.Wrap(Marshal.BindToMoniker("SAPGUI"));}
   catch(COMException){var t=Type.GetTypeFromProgID("SapROTWr.SapROTWrapper");if(t!=null){dynamic rot=SapDispatch.Wrap(Activator.CreateInstance(t))!;gui=rot.GetROTEntry("SAPGUI");}}
   if(gui==null)throw new InvalidOperationException("Open SAP GUI for Windows and log in first. Use the inspector in the same Windows session as SAP.");
   return gui.GetScriptingEngine;
  }
- static SapSession Describe(dynamic s){
+ internal static SapSession Describe(dynamic s){
   if((bool)s.Busy) return new(Get(()=>s.Id),"","","","Busy","SAP is processing","","");
   dynamic i=s.Info;
   return new(Get(()=>s.Id),Get(()=>i.SystemName),Get(()=>i.Client),Get(()=>i.User),Get(()=>i.Transaction),Get(()=>s.ActiveWindow.Text),Get(()=>i.ScriptingModeRecordingDisabled),Get(()=>i.ScriptingModeReadOnly));
@@ -39,7 +39,7 @@ public static class Reader {
    for(int n=0;n<(int)connection.Children.Count;n++){
     dynamic s=connection.Children[n];var info=Describe(s);sessions.Add(info);
     if(r.Action!="capture"||r.Session==null||info.Id!=r.Session.Id)continue;
-    if(info.System!=r.Session.System||info.Client!=r.Session.Client||info.User!=r.Session.User)throw new InvalidOperationException("This SAP session changed. Reload sessions and select it again.");
+    if(info.System!=r.Session!.System||info.Client!=r.Session.Client||info.User!=r.Session.User)throw new InvalidOperationException("This SAP session changed. Reload sessions and select it again.");
     if(Get(()=>s.Busy)=="True")throw new InvalidOperationException("SAP is busy. Wait for the screen to finish loading, then capture again.");
     var rows=new List<ControlRow>();var watch=Stopwatch.StartNew();
     void Walk(dynamic node,string parent,int depth){

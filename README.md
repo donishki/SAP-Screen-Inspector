@@ -1,101 +1,62 @@
-# SAP Screen Inspector
+﻿# SAP Screen Inspector 1.5.0
 
-A portable Windows tool for inspecting SAP GUI controls and capturing an annotated sequence of screens.
+A portable Windows tool for recording SAP GUI actions and inspecting controls.
 
-**This is manual step capture, not automatic click recording or a replayable SAP script.** It uses read-only SAP GUI Scripting access and does not require recording events. SAP scripting access must still be enabled.
-
-![Step capture with sample data](workspace-preview.png)
-
-## Features
-
-- Discover running SAP sessions and choose the one to inspect.
-- Browse a control tree and search by ID, name, type, tooltip or included value.
-- Copy control IDs and read-only VBScript snippets.
-- Inspect grid column IDs without scrolling or reading grid row contents.
-- Capture ordered steps with **Ctrl+Alt+F8**, then annotate actions and controls.
-- Select a control from the previous screen when it disappears after an action.
-- Export individual snapshots or the complete sequence as JSON.
-- Export a SAP-style VBScript draft as a text file, with TODOs for unsupported or incomplete actions.
-- Enter action values for text, combo keys, checkbox states or virtual key numbers (Enter = 0).
-- Optional auto-refresh outside step-capture mode.
-- Password controls excluded; screen values excluded by default.
-- Isolated reader process with a 25-second timeout.
-
-## Use
+## Record a sequence
 
 1. Open SAP GUI for Windows and log in.
 2. Run the inspector in the same Windows desktop/session as SAP.
-3. Select the SAP session and choose **Capture step** to save the initial screen.
-4. Perform one action in SAP and wait for it to finish.
-5. Press **Ctrl+Alt+F8** to capture the next screen. Repeat for each action.
-6. Choose **Stop**, review the timeline, and label the actions and controls.
-7. Choose **SAP script (.txt)** or **JSON (.json)** to export.
+3. Select the SAP session and press **Record**.
+4. Perform all your steps in SAP. No per-step hotkey is needed.
+5. Return and press **Stop** to collect the final pending actions.
+6. Review the ordered timeline and choose **Save script** or **JSON**.
 
-**Capture screen** and **Export capture** also work without starting a sequence.
-If the hotkey is already registered by another program, use **Capture step**.
+**Resume recording** appends to the same session. **New sequence** starts fresh after checking for unsaved changes. Ctrl+Alt+F8 also starts/stops recording when available.
 
-## Requirements and limits
+The recorder uses native SAP GUI Record/Change events. It retains property changes, button presses, virtual keys, selections, and grid/table methods supplied by SAP in order. SAP batches events until server communication or Stop; the count may not increase immediately. Timestamps indicate event delivery time.
 
-- Windows with SAP GUI for Windows and permitted SAP GUI Scripting access.
-- For Citrix/RDP, run the inspector inside the same environment as SAP.
-- It cannot bypass disabled scripting permissions.
-- Only currently instantiated controls are captured. Hidden tabs and virtualized grid rows require manual navigation.
-- Captures read the screen after your action; they do not infer which control you clicked.
-- The inspector never clicks controls, edits SAP fields, starts transactions, changes SAP settings or scrolls SAP grids.
-- Sequences remain in memory until exported. The app warns before discarding unexported steps.
-- Turning off value capture does not erase values in earlier steps.
-- Exports include SAP system/client, username, control metadata and any explicitly included screen values.
+## Requirements and limitations
 
-## Build
+- SAP GUI Scripting AND recording permission are required. Disabled recording, read-only scripting and an already active recorder produce an explicit error. The app cannot bypass SAP permissions.
+- Recording includes action values such as entered text and selected keys. **Screen values** applies only to screen snapshots, not recorded arguments. Password control commands are omitted without reading their arguments or Text property.
+- The starting screen is a full control snapshot. Later events contain the affected control and command, not full historical screen snapshots. Session metadata comes from the starting snapshot.
+- Only actions exposed by SAP scripting are recorded. OS dialogs, unsupported controls and backend-preset values may not produce events. Review scripts before running them.
+- Undecodable events add an error step and mark the sequence incomplete.
+- The app enables/disables recording but does not replay commands, edit fields or change server permissions. SAP recording mode can itself affect F4 dialogs and disable drag-and-drop.
+- Stop before exporting. Closing stops recording and warns about unexported data. If Stop fails, retry when SAP is responsive. Sequences remain in memory until exported.
+- JSON preserves native commands and supports legacy manual sequences. Recorded commands are read-only in the action editor; legacy manual steps remain editable.
+- Exports contain session identity, metadata and recorded inputs. Keep real captures private. Never commit captures or credentials.
+- Run inside the same Citrix/RDP environment as SAP when applicable.
+
+## Screen inspection
+
+Expand **Inspect screen controls** to capture, search, browse and copy IDs or inspect grid column IDs. Only instantiated controls are available; hidden tabs and virtualized rows require navigation. Optional auto-refresh and manual screen capture remain available while recording is stopped. Screen values are excluded by default.
+
+## Build and verify
 
 Install the .NET 8 SDK on Windows:
 
-~~~powershell
+```powershell
 dotnet build -c Release
 dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=None -o releases/win-x64
 dotnet publish -c Release -r win-x86 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=None -o releases/win-x86
-~~~
+```
 
-The published executables do not need a separate .NET installation.
+Both packages are portable; no separate .NET installation is needed. Choose the architecture compatible with your SAP scripting installation.
 
-## Development checks
+Run each executable with `--self-test` and `--smoke`. `--demo` opens sample data without SAP. Tests cover command rendering, chaining, quoting, ordering, Stop flush, cleanup, permissions, existing-recorder protection, password exclusion, reader/export behavior, timeline and JSON roundtrip.
 
-~~~powershell
-SAP-Screen-Inspector.exe --demo
-SAP-Screen-Inspector.exe --self-test
-SAP-Screen-Inspector.exe --smoke
-~~~
+Tests use simulated SAP objects. Live COM event delivery and installation-specific compatibility must be checked in your SAP environment.
 
-The demo uses sample controls without connecting to SAP.
-Self-tests cover discovery, traversal, hidden values, password exclusion, changed-session handling and serialization.
-The smoke test exercises the timeline and annotations, checks sequence serialization, and renders a preview.
+## Source
 
-Tests use simulated SAP objects; live compatibility must be checked in your SAP environment.
+- SapRecorder.cs: native COM events, recorder lifecycle and command rendering.
+- StepCapture.cs: Record/Stop, timeline and export.
+- Reader.cs and SapDispatch.cs: discovery and screen inspection.
+- ScriptExport.cs: recorded commands and legacy manual script generation.
+- Main.xaml, Program.cs and WorkspaceDesign.cs: WPF workspace.
+- RecorderTests.cs, SelfTests.cs and ScriptExportTests.cs: simulated checks.
 
-## Project layout
-
-- Reader.cs: read-only SAP discovery/capture and isolated worker process.
-- SapDispatch.cs: late-bound COM access without an SAP interop assembly.
-- Main.xaml: WPF interface.
-- Program.cs: application entry point and inspector controller.
-- StepCapture.cs: timeline, global hotkey, annotations and sequence export.
-- SelfTests.cs: simulated SAP fixtures and checks.
+API reference: [SAP GUI Scripting API](https://help.sap.com/doc/9215986e54174174854b0af6bb14305a/800.04/en-US/sap_gui_scripting_api.pdf), GuiSession Record and Change events.
 
 Independent project; not affiliated with or endorsed by SAP.
-
-## SAP-style text export
-
-Choose **SAP script (.txt)**. Annotate each step with its action and control. Text actions can use explicitly captured screen values or an action value. Combo selections need the SAP key, not the displayed caption. Password commands are omitted. Grid/tree actions and double-clicks need manual completion and are exported as TODO comments. The output uses SAP GUI VBScript syntax but is a draft, not an exact automatic recording. Export JSON as well to preserve all snapshots.
-
-API reference: https://help.sap.com/doc/9215986e54174174854b0af6bb14305a/770.03/en-US/sap_gui_scripting_api.pdf
-
-## Workspace design
-
-The light workspace includes a session toolbar, resizable screen/control/details panels, a numbered capture timeline, an action editor and a live SAP-style script preview. JSON export preserves the full capture sequence.
-
-Saved sessions opens exported JSON sequences for review and continued capture. Settings contains the optional auto-refresh switch.
-
-
-Version 1.4.1: simplified capture workspace
-
-Choose a session, click Start capture, then perform one action in SAP and press Ctrl+Alt+F8. Repeat for each step, stop, describe the action/control, then Save script. The hotkey also starts the first capture. Inspect screen controls is optional and collapsed initially. Capture failures now show a visible error and do not add an empty step. This is manual snapshot capture, not automatic SAP event recording.

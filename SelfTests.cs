@@ -4,6 +4,7 @@ public static class SelfTests {
  public static void Run(){
   void Check(bool ok,string message){if(!ok)throw new Exception(message);}
   ScriptExportTests.Run();
+  RecorderTests.Run();
   var password=new FakeNode{Id="wnd[0]/usr/pwd",Type="GuiPasswordField",Name="Secret",Secret=true};
   var field=new FakeNode{Id="wnd[0]/usr/txt",Type="GuiTextField",Name="Serial",Text="DEMO-SERIAL-001"};
   var window=new FakeNode{Id="wnd[0]",Type="GuiMainWindow",Name="Window",Children=[field,password]};

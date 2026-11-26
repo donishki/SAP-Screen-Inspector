@@ -48,7 +48,7 @@ public static class Program {
 
   if(args.Contains("--self-test")){SelfTests.Run();return;}
 
-  if(args.Length==3&&args[0]=="--worker"){Reply reply;try{reply=Reader.Read(JsonSerializer.Deserialize<Request>(File.ReadAllText(args[1]))!);}catch(Exception ex){reply=new(Error:ex.Message+" (0x"+ex.HResult.ToString("X8")+")");}File.WriteAllText(args[2],JsonSerializer.Serialize(reply));return;}
+  if(args.Length==3&&args[0]=="--worker"){Reply reply;try{reply=Reader.Read(JsonSerializer.Deserialize<Request>(File.ReadAllText(args[1]))!);}catch(Exception ex){reply=new(Error:ex.Message+" (0x"+ex.HResult.ToString("X8")+")",ErrorKind:(ex as SapReadException)?.Kind);}File.WriteAllText(args[2],JsonSerializer.Serialize(reply));return;}
 
 
 

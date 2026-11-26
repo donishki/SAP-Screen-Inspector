@@ -1,4 +1,4 @@
-﻿SAP SCREEN INSPECTOR 1.6.0
+SAP SCREEN INSPECTOR 1.6.1
 
 1. Open SAP GUI for Windows and select your session in the inspector.
 2. Enable Screen values first if you need field contents in observed mode.
@@ -25,8 +25,10 @@ Password controls are excluded. Native mode still includes action arguments.
 Exports contain session identity and potentially business data; keep them private.
 
 Stop removes input monitoring immediately and attempts a final screen sample.
-Sampling errors mark the sequence incomplete and suspend input observations
-until a valid sample re-establishes the selected session/window identity.
+Sampling retries slow or partial responses. Recent selected-window input remains
+observable without inferred targets during transient waits, for up to 30 seconds.
+Identity loss suspends input immediately. Persistent gaps are flagged; recovery
+adds a note. Stop may take about 20 seconds to obtain a complete final screen.
 Data stays in memory until exported. Closing warns about unsaved data.
 
 Both Windows x86 and x64 builds are portable and self-contained. Use the one
@@ -39,3 +41,11 @@ environment as SAP when applicable.
 
 Live SAP compatibility still requires verification in your environment.
 See README.md for details and build instructions.
+
+IMPROVEMENTS IN 1.6.1
+Menu captions and read-only text no longer create field-edit steps. Navigation
+produces one screen-change entry. Partial samples are retried without generating
+false removals. Click targeting uses native control handles where available,
+adjusts for moved windows, and rejects old/resized bounds or whole-window guesses.
+Unresolved clicks retain position/window context. Text exports include a summary
+and timestamps; all inferred actions remain non-executable review comments.

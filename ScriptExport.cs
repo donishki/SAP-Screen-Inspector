@@ -10,6 +10,10 @@ public static class ScriptExport {
   b.AppendLine("' SAP Screen Inspector - SAP-style VBScript draft");
   b.AppendLine("' Native SAP commands where recorded; manually annotated steps may contain TODOs.");
   b.AppendLine("' Review all commands and TODOs before use. Connection/session indices may change.");
+  if(steps.Any(s=>s.RequiresReview)){
+   b.AppendLine($"' Observed summary: {steps.Count(s=>s.RequiresReview&&s.Action is "Click" or "Double-click" or "Press key" or "Scroll")} inputs, {steps.Count(s=>s.RequiresReview&&s.Action is "Enter text" or "Choose item" or "Value changed")} field changes, {steps.Count(s=>s.RequiresReview&&s.Action=="Screen changed")} screen changes, {steps.Count(s=>s.Action=="Recording error")} reported gaps/errors.");
+   b.AppendLine("' OBSERVED / INFERRED entries are documentation only; they do not execute SAP actions.");
+  }
   var match=Regex.Match(steps.FirstOrDefault()?.Screen.Session.Id??"",@"con\[(\d+)\]/ses\[(\d+)\]");
   string connection=match.Success?match.Groups[1].Value:"0",session=match.Success?match.Groups[2].Value:"0";
   b.AppendLine("If Not IsObject(application) Then\r\n   Set SapGuiAuto = GetObject(\"SAPGUI\")\r\n   Set application = SapGuiAuto.GetScriptingEngine\r\nEnd If");
@@ -21,8 +25,9 @@ public static class ScriptExport {
    b.AppendLine();b.AppendLine($"' Step {step.Number}: {Line(step.Action)}");
    if(step.Notes.Length>0)b.AppendLine("' "+Line(step.Notes));
    if(step.RequiresReview){
-    b.AppendLine("' TODO: OBSERVED / INFERRED action; verify target and behavior before writing a replay command.");
-    b.AppendLine("' Control: "+Line(step.ControlId));
+    b.AppendLine($"' OBSERVED / INFERRED at {step.Captured:HH:mm:ss.fff} - review required.");
+    if(step.ControlId.Length>0)b.AppendLine("' Control: "+Line(step.ControlId));
+    else if(step.Action is "Click" or "Double-click" or "Press key")b.AppendLine("' Target: unresolved (see observed window/position above).");
     if(step.Argument.Length>0)b.AppendLine("' Sampled value: "+Line(step.Argument));
     continue;
    }

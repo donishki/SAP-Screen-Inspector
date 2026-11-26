@@ -71,7 +71,7 @@ public sealed partial class Controller {
 
  void InitializeSteps(){
 
-  Get<ComboBox>("StepAction").ItemsSource=new[]{"Unspecified","Starting screen","Click","Double-click","Enter text","Press key","Select tab","Choose item","Other","SAP action","Password omitted","Recording error","Screen changed","Value changed","Scroll"};
+  Get<ComboBox>("StepAction").ItemsSource=new[]{"Unspecified","Starting screen","Click","Double-click","Enter text","Press key","Select tab","Choose item","Other","SAP action","Password omitted","Recording error","Screen changed","Value changed","Scroll","Sampling note"};
 
   Get<Button>("StartSteps").Click+=async(_,_)=>{
 
@@ -95,6 +95,7 @@ public sealed partial class Controller {
      if(initial.Session.Recording is "1" or "True" || Get<CheckBox>("ObservedMode").IsChecked==true){
       observer=new ObservedRecorder(initial,Get<CheckBox>("Values").IsChecked==true);
       observer.Step+=AddObservedStep;
+      observer.Notice+=message=>AddObservedStep(new(){Captured=DateTime.Now,Action="Sampling note",RequiresReview=true,Screen=steps[^1].Screen,Notes=message});
       observer.Gap+=message=>{
        recordingIncomplete=true;
        AddObservedStep(new(){Captured=DateTime.Now,Action="Recording error",RequiresReview=true,Screen=steps[^1].Screen,Notes=message});

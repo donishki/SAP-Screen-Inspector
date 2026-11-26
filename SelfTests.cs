@@ -23,6 +23,12 @@ public static class SelfTests {
   var observed=Reader.Read(new("capture",sessions[0],true,true),engine).Snapshot!;
   Check(password.TextReads==0&&observed.Controls.Single(r=>r.Name=="Secret").ObservedState=="","Observed password exclusion");
   Check(observed.Controls.Single(r=>r.Name=="Serial").ObservedState=="DEMO-SERIAL-001","Observed field value");
+  var menu=new FakeNode{Id="wnd[0]/mbar",Type="GuiMenubar",Name="Menus",Children=[new(){Id="wnd[0]/mbar/menu",Type="GuiMenu",Text="Menu caption"}]};
+  window.Children.Add(menu);
+  var focused=Reader.Read(new("capture",sessions[0],true,true),engine).Snapshot!;
+  Check(!focused.Controls.Any(c=>c.Type is "GuiMenu" or "GuiMenubar")&&menu.TextReads==0,"Observation skips hidden menu traversal");
+  Check(Reader.Read(new("capture",sessions[0]),engine).Snapshot!.Controls.Any(c=>c.Type=="GuiMenu"),"Manual inspection retains menus");
+  window.Children.Remove(menu);
   Check(visible.Controls.Single(r=>r.Name=="Secret").Text=="[password excluded]","Password marker");
   session.Info.User="Different";
   bool rejected=false;try{Reader.Read(new("capture",sessions[0]),engine);}catch(InvalidOperationException){rejected=true;}

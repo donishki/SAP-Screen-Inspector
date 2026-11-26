@@ -20,6 +20,10 @@ public sealed class CapturedStep {
 
  public string? RecordedScript{get;set;}
  public bool RequiresReview{get;set;}
+ public InputDetails? Input {get;set;}
+ public SelectionDetails? Selection {get;set;}
+ public string SelectionContext {get;set;}="";
+ public string SelectionControlId {get;set;}="";
  [System.Text.Json.Serialization.JsonIgnore]
  public string DisplayAction=>Action+(RequiresReview?" (observed)":"");
 
@@ -71,7 +75,7 @@ public sealed partial class Controller {
 
  void InitializeSteps(){
 
-  Get<ComboBox>("StepAction").ItemsSource=new[]{"Unspecified","Starting screen","Click","Double-click","Enter text","Press key","Select tab","Choose item","Other","SAP action","Password omitted","Recording error","Screen changed","Value changed","Scroll","Sampling note"};
+  Get<ComboBox>("StepAction").ItemsSource=new[]{"Unspecified","Starting screen","Click","Double-click","Enter text","Press key","Select tab","Choose item","Other","SAP action","Password omitted","Recording error","Screen changed","Value changed","Scroll","Sampling note","Grid selection changed","Tree selection changed"};
 
   Get<Button>("StartSteps").Click+=async(_,_)=>{
 
@@ -225,7 +229,7 @@ public sealed partial class Controller {
   Get<Button>("TakeStep").Visibility=Visibility.Collapsed;
   Get<Button>("StartSteps").Visibility=recording?Visibility.Collapsed:Visibility.Visible;
   Get<TextBlock>("StepStatus").Text=$"{(stopping?"Stopping - collecting final screen":recording?(observer!=null?"Observing SAP - approximate":"Recording SAP"):"Stopped")} | {steps.Count} steps"+(recordingIncomplete?" | INCOMPLETE: recording error":steps.Any(s=>s.RequiresReview)?" | Review observed steps":"");
-  Get<TextBlock>("RecordingHint").Text=observer!=null||steps.Any(s=>s.RequiresReview)?"Observed mode: clicks, navigation keys and screen changes. Targets are inferred; fast actions may be missed. Screen values controls field-value capture. Review before use.":"Native recording captures SAP events and action values. If SAP disables recording, observed mode is selected automatically. Password controls are omitted.";
+  Get<TextBlock>("RecordingHint").Text=observer!=null||steps.Any(s=>s.RequiresReview)?"Observed mode: inputs, field changes and grid/tree selections. Targets are inferred; fast actions may be missed. Screen values controls field-value capture. Review before use.":"Native recording captures SAP events and action values. If SAP disables recording, observed mode is selected automatically. Password controls are omitted.";
 
  }
 
@@ -426,6 +430,15 @@ public sealed partial class Controller {
   var observedRoundtrip=ReadSequence(JsonSerializer.Serialize(new StepSequence("SAP-Screen-Inspector-steps",1,DateTime.Now,"Observed",steps)));
   if(!observedRoundtrip.Steps[^1].RequiresReview)throw new Exception("Observation marker lost in JSON");
   File.AppendAllText(Path.Combine(AppContext.BaseDirectory,"step-test.txt")," PASS: Windows input hook lifecycle, observed mode controls, final screen sample, review marker and JSON export.");
+  var initialSelection=new SelectionDetails{Kind="GridView",SampledAt=DateTime.Now,CurrentRow=0,CurrentColumn="DEMO_ID",SelectedRows="0",RowCount=20};
+  var demoGrid=new ControlRow("wnd[0]/usr/grid","GuiShell","Demo grid","","","wnd[0]/usr",2,"True",""){SubType="GridView",Selection=initialSelection};
+  var gridBefore=observedAfter with {Controls=[demoGrid]};
+  var gridAfter=gridBefore with {Controls=[demoGrid with {Selection=initialSelection with {CurrentRow=2,SelectedRows="2",SampledAt=DateTime.Now}}]};
+  AddObservedStep(Observation.Changes(gridBefore,gridAfter).Single());
+  if(!previewText.Contains("DEMO_ID")||!previewText.Contains("Current row")||!previewText.Contains("AFTER"))throw new Exception("Selection preview missing evidence");
+  var selectionRoundtrip=ReadSequence(JsonSerializer.Serialize(new StepSequence("SAP-Screen-Inspector-steps",1,DateTime.Now,"Observed",steps)));
+  if(selectionRoundtrip.Steps[^1].Selection?.CurrentRow!=2||selectionRoundtrip.Steps[^1].SelectionControlId!=demoGrid.ShortId)throw new Exception("Selection evidence lost in JSON");
+  File.AppendAllText(Path.Combine(AppContext.BaseDirectory,"step-test.txt")," PASS: grid selection timeline, text preview and structured JSON roundtrip.");
   stepsDirty=false;Enable();UpdateStepStatus();
 
  }

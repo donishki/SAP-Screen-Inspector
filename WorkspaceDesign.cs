@@ -48,6 +48,7 @@ public sealed partial class Controller {
   foreach(var step in data.Steps){
    if(step is null||step.Screen is null||step.Screen.Session is null||step.Screen.Controls is null||step.Screen.Controls.Any(c=>c is null))throw new InvalidDataException("A saved step is incomplete.");
    step.Action??="Unspecified";step.ControlId??="";step.Argument??="";step.Notes??="";
+   step.SelectionContext??="";step.SelectionControlId??="";
   }
   for(int i=0;i<data.Steps.Count;i++)data.Steps[i].Number=i+1;
   return data;

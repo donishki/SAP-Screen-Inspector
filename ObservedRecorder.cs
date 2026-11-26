@@ -21,6 +21,7 @@ internal sealed class SapInputMonitor : IInputMonitor {
  readonly Hook mouseCallback,keyboardCallback;
  Thread? thread;Dispatcher? dispatcher;Exception? startupError;
  Snapshot? screen;IntPtr mouse,keyboard;int count,dropped;
+ readonly DoubleClickTracker doubleClicks=new((int)GetDoubleClickTime(),GetSystemMetrics(36),GetSystemMetrics(37));
  public SapInputMonitor(){mouseCallback=Mouse;keyboardCallback=Keyboard;}
  public void Start(Snapshot initial){
   if(initial.Windows.Count==0||initial.Windows.Any(w=>w.ProcessId==0))throw new InvalidOperationException("SAP did not expose valid window handles. Cannot restrict observation to the selected session.");
@@ -50,7 +51,7 @@ internal sealed class SapInputMonitor : IInputMonitor {
  internal static bool Accepts(Snapshot snapshot,long root,uint processId)=>root!=0&&processId!=0&&(DateTime.Now-snapshot.Captured).TotalSeconds<=30&&snapshot.Windows.Any(w=>w.Handle==root&&w.ProcessId==processId);
  void Enqueue(Snapshot current,string action,string detail,int x,int y,long root,long nativeTarget=0,ScreenBounds? bounds=null){
   if(Interlocked.Increment(ref count)>512){Interlocked.Decrement(ref count);Interlocked.Increment(ref dropped);return;}
-  pending.Enqueue(new(DateTime.Now,action,detail,x,y,root,current,nativeTarget,bounds));
+  pending.Enqueue(doubleClicks.Classify(new(DateTime.Now,action,detail,x,y,root,current,nativeTarget,bounds)));
  }
  IntPtr Mouse(int code,IntPtr message,IntPtr data){
   try {
@@ -64,6 +65,7 @@ internal sealed class SapInputMonitor : IInputMonitor {
     var bounds=GetWindowRect(new IntPtr(unchecked((int)root)),out var rect)?new ScreenBounds(rect.Left,rect.Top,rect.Right-rect.Left,rect.Bottom-rect.Top):null;
     if((input.Flags&1)==0&&Accepts(current,root,pid))
      Enqueue(current,m is 0x20A or 0x20E?"Scroll":"Click",m switch{0x204=>"Right mouse button",0x207=>"Middle mouse button",0x20A=>"Vertical mouse wheel",0x20E=>"Horizontal mouse wheel",_=>"Left mouse button"},input.Point.X,input.Point.Y,root,Handle(target),bounds);
+    else doubleClicks.Reset();
    }
   }catch{Interlocked.Increment(ref dropped);}
   return CallNextHookEx(IntPtr.Zero,code,message,data);
@@ -72,6 +74,7 @@ internal sealed class SapInputMonitor : IInputMonitor {
   try {
    var current=Volatile.Read(ref screen);
    if(code>=0&&current!=null&&message.ToInt32() is 0x100 or 0x104){
+    doubleClicks.Reset();
     long root=Handle(GetAncestor(GetForegroundWindow(),2));
     GetWindowThreadProcessId(new IntPtr(unchecked((int)root)),out uint pid);
     if(Accepts(current,root,pid)){
@@ -105,6 +108,8 @@ internal sealed class SapInputMonitor : IInputMonitor {
  [DllImport("user32.dll")]static extern short GetAsyncKeyState(int key);
  [DllImport("user32.dll")]static extern uint GetWindowThreadProcessId(IntPtr window,out uint processId);
  [DllImport("user32.dll")]static extern bool GetWindowRect(IntPtr window,out NativeRect rect);
+ [DllImport("user32.dll")]static extern uint GetDoubleClickTime();
+ [DllImport("user32.dll")]static extern int GetSystemMetrics(int index);
 }
 
 internal static class Observation {
@@ -137,6 +142,12 @@ internal static class Observation {
   }
   string context=input.Action=="Press key"?$"Window: {window.Id}.":$"Position: ({input.X}, {input.Y}); window: {window.Id}.";
   return new(){Captured=input.Time,Action=input.Action,ControlId=control?.ShortId??"",RequiresReview=true,
+   Input=new(input.Detail,window.Id,input.Action=="Press key"?null:input.X,input.Action=="Press key"?null:input.Y,
+    input.Action=="Double-click"?2:input.Action=="Click"?1:0,input.Action=="Double-click"?"Timing/position suggest a double-click; SAP acceptance is unconfirmed. The preceding first click remains in the timeline.":"Windows input observed; SAP action and target are unconfirmed."),
+   Selection=control?.Selection,
+   SelectionControlId=control?.Selection!=null?control.ShortId:"",
+   SelectionContext=control?.Selection!=null?"Last sampled BEFORE this input; do not assume this was the clicked row/node.":
+    control?.Type is "GuiShell" or "GuiGridView" or "GuiTree"?"Selection details unavailable for this shell; clicked row/node remains unknown.":"",
    Screen=input.Screen,Notes=$"Observed: {input.Detail}. {context} "+(control==null?"Target control unknown. ":$"Target: {control.Name} ({control.Type}). {match} ")+
     (resized?"Window resized since sample. ":age>4?$"Screen sample is {age:0.0}s old. ":"")+"Review required."};
  }
@@ -150,6 +161,12 @@ internal static class Observation {
    yield break;
   }
   foreach(var row in after.Controls){
+   if(row.Selection is {} selection&&old.TryGetValue(row.Id,out var oldRow)&&
+      (oldRow.Selection==null||!selection.SameState(oldRow.Selection))){
+    yield return new(){Captured=selection.SampledAt,Action=selection.Kind=="GridView"?"Grid selection changed":"Tree selection changed",
+     ControlId=row.ShortId,RequiresReview=true,Selection=selection,SelectionControlId=row.ShortId,SelectionContext="Sampled state AFTER the previous complete screen sample; not tied to a confirmed click.",Screen=after,
+     Notes="Selection/focus state changed. It may result from mouse input, keyboard input or SAP itself. Verify the intended item and action before replay."};
+   }
    if(!Editable(row)||!old.TryGetValue(row.Id,out var previous)||!Editable(previous))continue;
    bool values=before.ValuesIncluded&&after.ValuesIncluded;
    if((values&&row.ObservedState!=previous.ObservedState)||(!previous.Modified&&row.Modified)){
@@ -167,6 +184,7 @@ internal sealed class ObservedRecorder {
  readonly Func<Request,CancellationToken,Task<Reply>> read;
  readonly IInputMonitor monitor;
  readonly CancellationTokenSource cancel=new();
+ readonly SemaphoreSlim inputSignal=new(0,1);
  readonly DispatcherTimer drainTimer=new(){Interval=TimeSpan.FromMilliseconds(150)};
  Snapshot current;Task? loop;bool stopped,gapReported;DateTime? failureSince;
  public event Action<CapturedStep>? Step;
@@ -179,10 +197,19 @@ internal sealed class ObservedRecorder {
   monitor.Start(current);
   drainTimer.Tick+=(_,_)=>Drain();drainTimer.Start();loop=Poll();
  }
- void Drain(){foreach(var input in monitor.Drain())Step?.Invoke(Observation.Input(input));if(monitor.TakeDropped()>0)Gap?.Invoke("Input observations were lost because the input queue filled or the monitor encountered an error.");}
+ void Drain(){
+  var inputs=monitor.Drain();
+  foreach(var input in inputs)Step?.Invoke(Observation.Input(input));
+  if(inputs.Count>0&&!stopped&&inputSignal.CurrentCount==0)inputSignal.Release();
+  if(monitor.TakeDropped()>0)Gap?.Invoke("Input observations were lost because the input queue filled or the monitor encountered an error.");
+ }
  async Task Poll(){
   while(!cancel.IsCancellationRequested){
-   try{await Task.Delay(750,cancel.Token);await Sample(cancel.Token);}
+   try{
+    bool inputArrived=await inputSignal.WaitAsync(750,cancel.Token);
+    if(inputArrived)await Task.Delay(120,cancel.Token);
+    await Sample(cancel.Token);
+   }
    catch(OperationCanceledException) when(cancel.IsCancellationRequested){break;}
   }
  }
@@ -230,6 +257,6 @@ internal sealed class ObservedRecorder {
   // Stop collecting Windows input immediately. Then drain and obtain a final SAP sample.
   monitor.Dispose();drainTimer.Stop();cancel.Cancel();
   if(loop!=null)await loop;
-  Drain();await Sample(CancellationToken.None,true);cancel.Dispose();
+  Drain();await Sample(CancellationToken.None,true);cancel.Dispose();inputSignal.Dispose();
  }
 }

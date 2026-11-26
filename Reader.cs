@@ -13,6 +13,8 @@ public record ControlRow(string Id,string Type,string Name,string Text,string To
  public string ObservedState {get;init;}="";
  public bool Modified {get;init;}
  public long NativeHandle {get;init;}
+ public string SubType {get;init;}="";
+ public SelectionDetails? Selection {get;init;}
  public string Change {get;set;}="";
  [System.Text.Json.Serialization.JsonIgnore] public string StatusLabel=>string.IsNullOrEmpty(Change)?"Captured":Change;
  [System.Text.Json.Serialization.JsonIgnore] public string Icon=>Type switch {"GuiButton"=>"\uE768","GuiTab"=>"\uE8B7","GuiCheckBox"=>"\uE73A","GuiComboBox"=>"\uE70D","GuiMainWindow"=>"\uE737","GuiUserArea"=>"\uE8B7",_=>"\uE8A5"};
@@ -69,6 +71,7 @@ public static class Reader {
      // Full manual inspection still includes them.
      if(r.Observe&&type is "GuiMenubar" or "GuiMenu")return;
      bool password=type.Contains("Password",StringComparison.OrdinalIgnoreCase);
+     string subtype=type=="GuiShell"?Get(()=>node.SubType):"";
      string value=password?"[password excluded]":r.Values?Get(()=>node.Text):"";
      string columns="";
      if(type=="GuiGridView"&&!r.Observe){
@@ -86,7 +89,8 @@ public static class Reader {
      long nativeHandle=0;
      if(r.Observe&&type is "GuiShell" or "GuiGridView" or "GuiTree" or "GuiTextedit")long.TryParse(Get(()=>node.Handle),out nativeHandle);
      rows.Add(new(id,type,Get(()=>node.Name),value,r.Observe?"":Get(()=>node.Tooltip),parent,depth,Get(()=>node.Changeable),columns){
-      Bounds=bounds,NativeHandle=unchecked((uint)nativeHandle),ObservedState=state,
+      Bounds=bounds,NativeHandle=unchecked((uint)nativeHandle),ObservedState=state,SubType=subtype,
+      Selection=password?null:SelectionReader.Read(node,SelectionReader.Kind(type,subtype)),
       Modified=r.Observe&&!password&&Observation.IsValueControl(type)&&Get(()=>node.Modified) is "True" or "1" or "-1"
      });
      // Do not read grid cells or change scroll position; only enumerate child controls.

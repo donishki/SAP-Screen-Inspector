@@ -13,6 +13,7 @@ public static class ScriptExport {
   if(steps.Any(s=>s.RequiresReview)){
    b.AppendLine($"' Observed summary: {steps.Count(s=>s.RequiresReview&&s.Action is "Click" or "Double-click" or "Press key" or "Scroll")} inputs, {steps.Count(s=>s.RequiresReview&&s.Action is "Enter text" or "Choose item" or "Value changed")} field changes, {steps.Count(s=>s.RequiresReview&&s.Action=="Screen changed")} screen changes, {steps.Count(s=>s.Action=="Recording error")} reported gaps/errors.");
    b.AppendLine("' OBSERVED / INFERRED entries are documentation only; they do not execute SAP actions.");
+   b.AppendLine($"' Selection state changes: {steps.Count(s=>s.Action is "Grid selection changed" or "Tree selection changed")}. Sampled selections do not prove which row/node was clicked.");
   }
   var match=Regex.Match(steps.FirstOrDefault()?.Screen.Session.Id??"",@"con\[(\d+)\]/ses\[(\d+)\]");
   string connection=match.Success?match.Groups[1].Value:"0",session=match.Success?match.Groups[2].Value:"0";
@@ -29,6 +30,10 @@ public static class ScriptExport {
     if(step.ControlId.Length>0)b.AppendLine("' Control: "+Line(step.ControlId));
     else if(step.Action is "Click" or "Double-click" or "Press key")b.AppendLine("' Target: unresolved (see observed window/position above).");
     if(step.Argument.Length>0)b.AppendLine("' Sampled value: "+Line(step.Argument));
+    if(step.Input!=null)b.AppendLine("' Input evidence: "+Line(step.Input.Evidence));
+    if(step.SelectionContext.Length>0)b.AppendLine("' Selection context: "+Line(step.SelectionContext));
+    if(step.SelectionControlId.Length>0)b.AppendLine("' Selection control at sampling: "+Line(step.SelectionControlId));
+    if(step.Selection!=null)foreach(string detail in step.Selection.Describe())b.AppendLine("' "+Line(detail));
     continue;
    }
    if(step.RecordedScript!=null){b.AppendLine(step.RecordedScript);continue;}

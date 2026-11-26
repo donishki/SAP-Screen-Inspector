@@ -1,9 +1,9 @@
-SAP SCREEN INSPECTOR 1.6.1
+SAP SCREEN INSPECTOR 1.7.0
 
 1. Open SAP GUI for Windows and select your session in the inspector.
 2. Enable Screen values first if you need field contents in observed mode.
 3. Press Record, go to SAP, and perform all your steps.
-4. Return and press Stop. Review the timeline and export script text or JSON.
+4. Return and press Stop. Review the timeline and export script text and JSON.
 
 When SAP disables native recording, observed mode starts automatically.
 Settings > Use observed recording also lets you select this mode manually.
@@ -14,13 +14,17 @@ SAP scripting read access must still be available.
 Observed mode is approximate. Fast actions, transient dialogs, grids and stale
 control positions can cause missing or incorrectly inferred steps. Field changes
 can also come from SAP itself. New windows are monitored only after discovery.
-Double-clicks appear as separate clicks. Review every observed action.
+Likely double-clicks are labelled using Windows timing and position limits.
+The first click remains in the timeline; SAP acceptance is unconfirmed.
+Review every observed action.
 Observed steps export as TODO comments, not automatic replay commands.
-JSON preserves screen control metadata, observations and review markers;
+JSON preserves screen control metadata, structured input/selection evidence
+and review markers;
 no bitmap screenshots are captured.
 
 Raw typed characters and clipboard contents are never recorded by the input
 monitor. Screen values controls sampled field contents in observed mode.
+Selection metadata (row indices, column IDs, node keys) is included independently.
 Password controls are excluded. Native mode still includes action arguments.
 Exports contain session identity and potentially business data; keep them private.
 
@@ -42,10 +46,20 @@ environment as SAP when applicable.
 Live SAP compatibility still requires verification in your environment.
 See README.md for details and build instructions.
 
-IMPROVEMENTS IN 1.6.1
-Menu captions and read-only text no longer create field-edit steps. Navigation
-produces one screen-change entry. Partial samples are retried without generating
-false removals. Click targeting uses native control handles where available,
-adjusts for moved windows, and rejects old/resized bounds or whole-window guesses.
-Unresolved clicks retain position/window context. Text exports include a summary
-and timestamps; all inferred actions remain non-executable review comments.
+IMPROVEMENTS IN 1.7.0
+GridView samples include current row, technical column ID, selected row ranges
+and row count. Tree samples include exact node keys or a single item's node and
+column. Unsupported getters and multi-item tree selections are flagged.
+The reader does not fetch grid cell contents or node captions. Node lists are
+limited to 100 keys and selection strings to 2,048 characters, with warnings.
+
+Selection changes appear in the timeline. Selection attached to an input was
+sampled BEFORE that input and may differ from the row/node actually clicked.
+Later samples are separate evidence, not confirmation of a click target.
+Row indices can change after sorting/filtering. Automation still needs a way
+to identify the intended business record and verify the outcome.
+
+Inputs trigger earlier screen samples when possible. JSON keeps structured
+evidence; the text export shows readable selection details and timestamps.
+Export both formats when developing an automation program. Observations remain
+non-executable comments requiring review, and are not a complete replay script.

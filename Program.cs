@@ -328,7 +328,7 @@ public sealed partial class Controller {
 
   }
 
-  if(row!=null){Field("Type",row.Type);Field("ID",row.ShortId);Field("Name",row.Name);Field("Value",snapshot?.ValuesIncluded==true?row.Text:"Hidden");if(row.Tooltip.Length>0)Field("Tooltip",row.Tooltip);if(row.Columns.Length>0)Field("Columns",row.Columns);}
+  if(row!=null){Field("Type",row.Type);if(row.SubType.Length>0)Field("Shell subtype",row.SubType);if(row.Selection!=null)Field("Sampled selection",string.Join(Environment.NewLine,row.Selection.Describe()));Field("ID",row.ShortId);Field("Name",row.Name);Field("Value",snapshot?.ValuesIncluded==true?row.Text:"Hidden");if(row.Tooltip.Length>0)Field("Tooltip",row.Tooltip);if(row.Columns.Length>0)Field("Columns",row.Columns);}
 
 
 

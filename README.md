@@ -1,4 +1,4 @@
-# SAP Screen Inspector 1.7.0
+# SAP Screen Inspector 1.8.0
 
 A portable Windows tool for recording SAP GUI actions and inspecting controls.
 
@@ -19,7 +19,7 @@ When SAP allows native recording, the recorder uses SAP GUI Record/Change events
 
 - SAP GUI Scripting read access is required. Native recording additionally requires recording permission. If recording is disabled, the app automatically uses observed mode without enabling SAP Record or subscribing to SAP events. An already active native recorder is left alone.
 - Native recording includes action values such as entered text and selected keys. In observed mode, **Screen values** controls whether sampled field values are included; it is locked while recording. Selection metadata (row indices, column IDs and node keys) is included independently of that switch. Password controls remain excluded. Raw typed characters and clipboard contents are never collected by the input monitor.
-- The starting screen is a full control snapshot. Native events contain the affected control and command. Observed inputs reference the last sampled screen; sampled changes include the resulting screen. Input timestamps and sample timestamps may differ from the time SAP processed an action.
+- The starting screen is a control snapshot. Observed snapshots focus on interactive controls and their containers. Native events contain the affected control and command. Observed inputs reference the last sampled screen; sampled changes include the resulting screen. Input timestamps and sample timestamps may differ from the time SAP processed an action.
 - Only actions exposed by SAP scripting are recorded. OS dialogs, unsupported controls and backend-preset values may not produce events. Review scripts before running them.
 - Undecodable native events, observation queue overflow and persistent sampling failures add error steps. Transient busy/partial/timeout samples are retried. Recently verified window/process scope is retained for up to 30 seconds, without stale control targets; identity loss or non-transient failure suspends input immediately. Recovery adds a sampling note. A reported gap remains visible after recovery.
 - Native mode enables/disables SAP recording. Observed mode never changes SAP recording or server settings. Neither mode replays commands or edits SAP fields. SAP native recording mode can itself affect F4 dialogs and disable drag-and-drop.
@@ -34,9 +34,13 @@ Press **Record**, perform your steps in SAP, then **Stop**. The app selects this
 
 A Windows input monitor observes clicks, scrolling and navigation keys only in sampled windows belonging to the selected SAP session and process. Other applications and other SAP session windows are excluded. Printable keys are discarded, not translated or stored. Input hooks run on a dedicated thread and are removed immediately on Stop.
 
-Read-only SAP screen samples run approximately every 750 ms plus read time. Observed input requests an earlier sample after a short settling delay; reads stay sequential. Observed sampling skips hidden menu trees, tooltips and grid-column enumeration to reduce COM work. Only editable text fields, combos, checkboxes and radio buttons produce field-change steps. Menu captions, titles and read-only values do not count as edits; navigation produces one screen-change step rather than a burst of initial-value changes. Full manual inspection still includes menu and column metadata.
+Recording reuses one isolated STA reader process over redirected pipes, avoiding a process launch and temporary JSON files for every sample. Reads remain sequential. The poll interval aims for 500 ms between sample starts, with at least a 100 ms pause after a slow read. Observed input requests an earlier sample after a 60 ms settling delay. Actual throughput depends on SAP response time. A timed-out or cancelled reader is terminated; a later read starts a fresh worker.
 
-Sampling allows 15 seconds initially and 25 seconds on a retry. Partial samples never replace the last complete baseline. Short busy intervals are retried without an immediate error step; repeated failures are grouped until recovery. Stop removes input monitoring immediately, cancels the in-flight read, and tries up to two final reads of 10 seconds each.
+Observed sampling skips menu trees, decorative labels, tooltips and grid-column enumeration, fetches each child collection once, and reads bounds only for interactive controls. Only editable text fields, combos, checkboxes and radio buttons produce field-change steps. Failed field-value getters remain unavailable rather than appearing as cleared text. Full manual inspection still includes decorative controls and column metadata.
+
+Sampling allows 15 seconds initially and 25 seconds on a retry. Partial samples never replace the last complete baseline for screen/field-change comparison. Their successfully read controls can supply inferred input targets only after the session identity, transaction/title, window handles/processes and window geometry have been rechecked. Each control must still be no more than four seconds old. Missing controls are not interpreted as removals. A sampling note preserves the first verified partial screen of an interval; persistent gaps remain flagged. Other failed reads retain only recent window scope, without stale targets.
+
+Short busy intervals are retried without an immediate error step; repeated failures are grouped until recovery. Stop removes input monitoring immediately, cancels the in-flight read, tries up to two final reads of 10 seconds each, and disposes the worker. Samples carry per-control timestamps and a completion time in JSON. Text exports include the exporter version and a sampling-note count; the window title also shows the application version.
 
 Enable **Screen values** before Record if you need sampled field contents. Without values, a field's Modified flag can indicate an edit, but repeated edits may not be distinguishable.
 
@@ -78,9 +82,11 @@ Tests use simulated SAP objects. Live COM event delivery and installation-specif
 - SelectionDetails.cs: bounded grid/tree selection reads, structured evidence and double-click timing.
 - StepCapture.cs: Record/Stop, timeline and export.
 - Reader.cs and SapDispatch.cs: discovery and screen inspection.
+- ReaderSession.cs: persistent observation worker, pipe transport and cancellation/timeout cleanup.
 - ScriptExport.cs: recorded commands and legacy manual script generation.
 - Main.xaml, Program.cs and WorkspaceDesign.cs: WPF workspace.
 - RecorderTests.cs, ObservationTests.cs, SelectionTests.cs, SelfTests.cs and ScriptExportTests.cs: simulated checks, including caption-noise filtering, stale/resized targeting, partial-screen retries, slow-response recovery, selection APIs, evidence preservation and double-click timing.
+- SamplingTests.cs: partial-screen target retention, individual control freshness, unavailable field values, collection-read counts, worker lifecycle and native window-scope checks using synthetic controls.
 
 API reference: [SAP GUI Scripting API](https://help.sap.com/doc/9215986e54174174854b0af6bb14305a/800.04/en-US/sap_gui_scripting_api.pdf), GuiSession Record/Change events, GuiGridView selection properties and GuiTree selection methods.
 

@@ -15,6 +15,9 @@ public record ControlRow(string Id,string Type,string Name,string Text,string To
  public long NativeHandle {get;init;}
  public string SubType {get;init;}="";
  public SelectionDetails? Selection {get;init;}
+ public DateTime SampledAt {get;init;}
+ public bool StateAvailable {get;init;}=true;
+ public bool ModifiedAvailable {get;init;}=true;
  public string Change {get;set;}="";
  [System.Text.Json.Serialization.JsonIgnore] public string StatusLabel=>string.IsNullOrEmpty(Change)?"Captured":Change;
  [System.Text.Json.Serialization.JsonIgnore] public string Icon=>Type switch {"GuiButton"=>"\uE768","GuiTab"=>"\uE8B7","GuiCheckBox"=>"\uE73A","GuiComboBox"=>"\uE70D","GuiMainWindow"=>"\uE737","GuiUserArea"=>"\uE8B7",_=>"\uE8A5"};
@@ -26,6 +29,8 @@ public record ObservedWindow(long Handle,string Id,uint ProcessId=0) {
 }
 public record Snapshot(DateTime Captured,SapSession Session,List<ControlRow> Controls,bool ValuesIncluded,List<string> Warnings) {
  public List<ObservedWindow> Windows {get;init;}=[];
+ public DateTime CompletedAt {get;init;}
+ public bool ScopeVerified {get;init;}
 }
 public record Request(string Action,SapSession? Session=null,bool Values=false,bool Observe=false,int TimeoutSeconds=25);
 public record Reply(List<SapSession>? Sessions=null,Snapshot? Snapshot=null,string? Error=null,string? ErrorKind=null);
@@ -51,11 +56,13 @@ public static class Reader {
  }
  public static Reply Read(Request r, object? testEngine=null){
   dynamic app=testEngine??Engine();var sessions=new List<SapSession>();var warnings=new List<string>();
-  for(int c=0;c<(int)app.Children.Count;c++){
-   dynamic connection=app.Children[c];
+  dynamic connections=app.Children;int connectionCount=(int)connections.Count;
+  for(int c=0;c<connectionCount;c++){
+   dynamic connection=connections[c];
    if(Get(()=>connection.DisabledByServer).Equals("True",StringComparison.OrdinalIgnoreCase)){warnings.Add("Scripting is disabled by the SAP server.");continue;}
-   for(int n=0;n<(int)connection.Children.Count;n++){
-    dynamic s=connection.Children[n];
+   dynamic children=connection.Children;int sessionCount=(int)children.Count;
+   for(int n=0;n<sessionCount;n++){
+    dynamic s=children[n];
     if(r.Action=="capture"&&r.Session!=null&&Get(()=>s.Id)!=r.Session.Id)continue;
     if(r.Action=="capture"&&r.Session!=null&&Get(()=>s.Id)==r.Session.Id&&Get(()=>s.Busy)=="True")
      throw new SapReadException("Busy","SAP is processing. Waiting for a stable screen.");
@@ -66,43 +73,54 @@ public static class Reader {
     var sampleStarted=DateTime.Now;var rows=new List<ControlRow>();var watch=Stopwatch.StartNew();
     void Walk(dynamic node,string parent,int depth){
      if(rows.Count>=12000||depth>40||watch.Elapsed.TotalSeconds>15){if(!warnings.Contains("Capture limited: screen is very large."))warnings.Add("Capture limited: screen is very large.");return;}
+     var sampledAt=DateTime.Now;
      string id=Get(()=>node.Id),type=Get(()=>node.Type);
+     if(id.Length==0||type.Length==0){warnings.Add("A control identity was unavailable.");return;}
      // Hidden menu trees account for many expensive COM reads but no screen input state.
      // Full manual inspection still includes them.
-     if(r.Observe&&type is "GuiMenubar" or "GuiMenu")return;
+     if(r.Observe&&type is "GuiMenubar" or "GuiMenu" or "GuiLabel" or "GuiTitlebar")return;
+     bool target=Observation.IsTarget(type),field=Observation.IsValueControl(type);
      bool password=type.Contains("Password",StringComparison.OrdinalIgnoreCase);
+     string changeable=!r.Observe||field?Get(()=>node.Changeable):"";
      string subtype=type=="GuiShell"?Get(()=>node.SubType):"";
-     string value=password?"[password excluded]":r.Values?Get(()=>node.Text):"";
+     bool stateAvailable=true,modifiedAvailable=true;
+     string ReadState(Func<object?> read){try{return Convert.ToString(read())??"";}catch{stateAvailable=false;return "";}}
+     string value=password?"[password excluded]":r.Values&&(!r.Observe||field)?ReadState(()=>node.Text):"";
      string columns="";
      if(type=="GuiGridView"&&!r.Observe){
       var cols=new List<string>();try{foreach(var col in node.ColumnOrder){string key=Convert.ToString(col)??"";cols.Add(key+" — "+Get(()=>node.GetDisplayedColumnTitle(key)));}}catch{warnings.Add("Some grid column metadata could not be read.");}
       columns=string.Join(Environment.NewLine,cols);
      }
      ScreenBounds? bounds=null;
-     if(r.Observe&&int.TryParse(Get(()=>node.ScreenLeft),out int left)&&int.TryParse(Get(()=>node.ScreenTop),out int top)&&
+     if(r.Observe&&target&&int.TryParse(Get(()=>node.ScreenLeft),out int left)&&int.TryParse(Get(()=>node.ScreenTop),out int top)&&
         int.TryParse(Get(()=>node.Width),out int width)&&int.TryParse(Get(()=>node.Height),out int height)&&width>0&&height>0)
       bounds=new(left,top,width,height);
      string state="";
      if(r.Observe&&r.Values&&!password&&Observation.IsValueControl(type))state=type switch {
-      "GuiComboBox"=>Get(()=>node.Key),"GuiCheckBox" or "GuiRadioButton"=>Get(()=>node.Selected),_=>value
+      "GuiComboBox"=>ReadState(()=>node.Key),"GuiCheckBox" or "GuiRadioButton"=>ReadState(()=>node.Selected),_=>value
      };
      long nativeHandle=0;
      if(r.Observe&&type is "GuiShell" or "GuiGridView" or "GuiTree" or "GuiTextedit")long.TryParse(Get(()=>node.Handle),out nativeHandle);
-     rows.Add(new(id,type,Get(()=>node.Name),value,r.Observe?"":Get(()=>node.Tooltip),parent,depth,Get(()=>node.Changeable),columns){
+     string modified="";
+     if(r.Observe&&!password&&field&&changeable is "True" or "1" or "-1"){try{modified=Convert.ToString(node.Modified)??"";}catch{modifiedAvailable=false;}}
+     if(r.Observe&&!stateAvailable)warnings.Add("A field value was unavailable during capture.");
+     rows.Add(new(id,type,!r.Observe||target||password?Get(()=>node.Name):"",value,r.Observe?"":Get(()=>node.Tooltip),parent,depth,changeable,columns){
       Bounds=bounds,NativeHandle=unchecked((uint)nativeHandle),ObservedState=state,SubType=subtype,
       Selection=password?null:SelectionReader.Read(node,SelectionReader.Kind(type,subtype)),
-      Modified=r.Observe&&!password&&Observation.IsValueControl(type)&&Get(()=>node.Modified) is "True" or "1" or "-1"
+      SampledAt=sampledAt,StateAvailable=stateAvailable,ModifiedAvailable=modifiedAvailable,
+      Modified=modified is "True" or "1" or "-1"
      });
      // Do not read grid cells or change scroll position; only enumerate child controls.
      if(Get(()=>node.ContainerType)!="True")return;
-     try{int count=(int)node.Children.Count;for(int k=0;k<count;k++){
-      try{Walk(node.Children[k],id,depth+1);}catch{warnings.Add("Some controls changed or were unavailable during capture.");}
+     try{dynamic descendants=node.Children;int count=(int)descendants.Count;for(int k=0;k<count;k++){
+      try{Walk(descendants[k],id,depth+1);}catch{warnings.Add("Some controls changed or were unavailable during capture.");}
      }}
      catch{warnings.Add("Some controls changed or were unavailable during capture.");}
     }
     var windows=new List<ObservedWindow>();
-    for(int w=0;w<(int)s.Children.Count;w++){
-     dynamic window=s.Children[w];
+    dynamic sessionWindows=s.Children;int windowCount=(int)sessionWindows.Count;
+    for(int w=0;w<windowCount;w++){
+     dynamic window=sessionWindows[w];
      if(r.Observe&&long.TryParse(Get(()=>window.Handle),out long handle)&&handle!=0){
       uint normalized=unchecked((uint)handle);
       GetWindowThreadProcessId(new IntPtr(unchecked((int)normalized)),out uint processId);
@@ -111,7 +129,27 @@ public static class Reader {
      }
      Walk(window,"",0);
     }
-    return new(Snapshot:new(sampleStarted,info,rows,r.Values,warnings.Distinct().ToList()){Windows=windows});
+    bool verified=false;
+    if(r.Observe){
+     try{
+      if(Get(()=>s.Busy)=="True")throw new SapReadException("Busy","SAP started processing during sampling.");
+      var end=Describe(s);
+      if(end.Id!=info.Id||end.System!=info.System||end.Client!=info.Client||end.User!=info.User)
+       throw new SapReadException("Unavailable","SAP session identity changed during sampling.");
+      verified=end.Transaction==info.Transaction&&end.Title==info.Title&&(int)s.Children.Count==windowCount&&windows.Count==windowCount;
+      for(int w=0;verified&&w<windowCount;w++){
+       dynamic window=s.Children[w];var saved=windows[w];
+       uint handle=unchecked((uint)Convert.ToInt64(window.Handle));
+       GetWindowThreadProcessId(new IntPtr(unchecked((int)handle)),out uint pid);
+       var bounds=GetWindowRect(new IntPtr(unchecked((int)handle)),out var rect)?new ScreenBounds(rect.Left,rect.Top,rect.Right-rect.Left,rect.Bottom-rect.Top):null;
+       verified=saved.Id==Get(()=>window.Id)&&saved.Handle==handle&&saved.ProcessId==pid&&pid!=0&&saved.Bounds==bounds;
+      }
+     }catch(SapReadException){throw;}
+     catch{verified=false;}
+     // Without HWNDs the result is inspection-only and cannot start an input monitor.
+     if(!verified&&windows.Count>0){warnings.Add("Screen or window scope changed during sampling; control targets were discarded.");rows.Clear();}
+    }
+    return new(Snapshot:new(sampleStarted,info,rows,r.Values,warnings.Distinct().ToList()){Windows=windows,CompletedAt=DateTime.Now,ScopeVerified=verified});
    }
   }
   if(r.Action=="capture")throw new InvalidOperationException("The selected SAP session is no longer available. Reload sessions.");
@@ -123,9 +161,7 @@ public static class Reader {
   string input=Path.Combine(dir,"request.json"),output=Path.Combine(dir,"reply.json");
   try{
    await File.WriteAllTextAsync(input,JsonSerializer.Serialize(request));
-   var start=new ProcessStartInfo(Environment.ProcessPath!){UseShellExecute=false,CreateNoWindow=true};
-   if(Path.GetFileNameWithoutExtension(Environment.ProcessPath!).Equals("dotnet",StringComparison.OrdinalIgnoreCase))start.ArgumentList.Add(typeof(Reader).Assembly.Location);
-   foreach(var arg in new[]{"--worker",input,output})start.ArgumentList.Add(arg);
+   var start=WorkerStart("--worker",input,output);
    using var process=Process.Start(start)!;
    int seconds=Math.Clamp(request.TimeoutSeconds,1,25);
    using var timeout=CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);timeout.CancelAfter(TimeSpan.FromSeconds(seconds));
@@ -135,6 +171,12 @@ public static class Reader {
    if(result.Error!=null)throw new SapReadException(result.ErrorKind??"Unavailable",result.Error);
    return result;
   }finally{try{Directory.Delete(dir,true);}catch{}}
+ }
+ internal static ProcessStartInfo WorkerStart(params string[] arguments){
+  var start=new ProcessStartInfo(Environment.ProcessPath!){UseShellExecute=false,CreateNoWindow=true};
+  if(Path.GetFileNameWithoutExtension(Environment.ProcessPath!).Equals("dotnet",StringComparison.OrdinalIgnoreCase))start.ArgumentList.Add(typeof(Reader).Assembly.Location);
+  foreach(var argument in arguments)start.ArgumentList.Add(argument);
+  return start;
  }
 }
 

@@ -48,6 +48,8 @@ public static class Program {
 
   if(args.Contains("--self-test")){SelfTests.Run();return;}
 
+  if(args.Length==1&&args[0] is "--observe-worker" or "--observe-worker-demo"){ReaderSession.RunWorker(args[0]=="--observe-worker-demo");return;}
+
   if(args.Length==3&&args[0]=="--worker"){Reply reply;try{reply=Reader.Read(JsonSerializer.Deserialize<Request>(File.ReadAllText(args[1]))!);}catch(Exception ex){reply=new(Error:ex.Message+" (0x"+ex.HResult.ToString("X8")+")",ErrorKind:(ex as SapReadException)?.Kind);}File.WriteAllText(args[2],JsonSerializer.Serialize(reply));return;}
 
 
@@ -60,7 +62,7 @@ public static class Program {
 
 
 
-  var window=(Window)XamlReader.Load(stream);var controller=new Controller(window,args.Contains("--demo")||args.Contains("--smoke"));
+  var window=(Window)XamlReader.Load(stream);window.Title+=" "+typeof(Program).Assembly.GetName().Version?.ToString(3);var controller=new Controller(window,args.Contains("--demo")||args.Contains("--smoke"));
 
 
 

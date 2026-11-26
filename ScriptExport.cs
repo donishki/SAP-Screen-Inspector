@@ -8,12 +8,14 @@ public static class ScriptExport {
  public static string Render(IReadOnlyList<CapturedStep> steps){
   var b=new StringBuilder();
   b.AppendLine("' SAP Screen Inspector - SAP-style VBScript draft");
+  b.AppendLine("' Exporter version: "+typeof(ScriptExport).Assembly.GetName().Version?.ToString(3));
   b.AppendLine("' Native SAP commands where recorded; manually annotated steps may contain TODOs.");
   b.AppendLine("' Review all commands and TODOs before use. Connection/session indices may change.");
   if(steps.Any(s=>s.RequiresReview)){
    b.AppendLine($"' Observed summary: {steps.Count(s=>s.RequiresReview&&s.Action is "Click" or "Double-click" or "Press key" or "Scroll")} inputs, {steps.Count(s=>s.RequiresReview&&s.Action is "Enter text" or "Choose item" or "Value changed")} field changes, {steps.Count(s=>s.RequiresReview&&s.Action=="Screen changed")} screen changes, {steps.Count(s=>s.Action=="Recording error")} reported gaps/errors.");
    b.AppendLine("' OBSERVED / INFERRED entries are documentation only; they do not execute SAP actions.");
    b.AppendLine($"' Selection state changes: {steps.Count(s=>s.Action is "Grid selection changed" or "Tree selection changed")}. Sampled selections do not prove which row/node was clicked.");
+   b.AppendLine($"' Sampling notes: {steps.Count(s=>s.Action=="Sampling note")}. Review these for partial screens and recovery details.");
   }
   var match=Regex.Match(steps.FirstOrDefault()?.Screen.Session.Id??"",@"con\[(\d+)\]/ses\[(\d+)\]");
   string connection=match.Success?match.Groups[1].Value:"0",session=match.Success?match.Groups[2].Value:"0";

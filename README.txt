@@ -1,4 +1,4 @@
-SAP SCREEN INSPECTOR 1.7.0
+SAP SCREEN INSPECTOR 1.8.0
 
 1. Open SAP GUI for Windows and select your session in the inspector.
 2. Enable Screen values first if you need field contents in observed mode.
@@ -35,6 +35,17 @@ Identity loss suspends input immediately. Persistent gaps are flagged; recovery
 adds a note. Stop may take about 20 seconds to obtain a complete final screen.
 Data stays in memory until exported. Closing warns about unsaved data.
 
+IMPROVEMENTS IN 1.8.0
+Recording reuses one reader process and reduces unnecessary SAP property reads.
+Sampling aims for 500 ms between starts when SAP responds quickly; slow reads
+are followed by a 100 ms pause. Inputs request an earlier sample.
+Fresh controls from partial screens remain available for inferred targets after
+the session and windows are rechecked. Each control has its own sample timestamp.
+Partial screens never imply that missing controls or field values were deleted.
+Sampling notes preserve partial-screen evidence, and persistent gaps stay flagged.
+Blocked workers are terminated on cancellation/timeout and restarted as needed.
+The window title and text export now show the application/exporter version.
+
 Both Windows x86 and x64 builds are portable and self-contained. Use the one
 compatible with your SAP scripting installation. Run inside the same Citrix/RDP
 environment as SAP when applicable.
@@ -46,7 +57,7 @@ environment as SAP when applicable.
 Live SAP compatibility still requires verification in your environment.
 See README.md for details and build instructions.
 
-IMPROVEMENTS IN 1.7.0
+GRID AND TREE DETAILS
 GridView samples include current row, technical column ID, selected row ranges
 and row count. Tree samples include exact node keys or a single item's node and
 column. Unsupported getters and multi-item tree selections are flagged.

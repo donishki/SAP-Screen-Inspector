@@ -419,6 +419,7 @@ public sealed partial class Controller {
   File.AppendAllText(Path.Combine(AppContext.BaseDirectory,"step-test.txt")," PASS: recorded command timeline, Stop, script export and recorded JSON roundtrip.");
   // Exercise actual Win32 hook install/uninstall against this synthetic demo window only.
   var demoWindow=new ObservedWindow(unchecked((uint)new WindowInteropHelper(w).Handle.ToInt64()),"wnd[0]",(uint)Environment.ProcessId);
+  SamplingTests.VerifyWindowScope(demoWindow.Handle);
   var observedBefore=Demo() with {Windows=[demoWindow]};
   var observedAfter=observedBefore with {Captured=DateTime.Now,Session=observedBefore.Session with {Transaction="DEMO-NEXT"}};
   observer=new ObservedRecorder(observedBefore,false,(_,_)=>Task.FromResult(new Reply(Snapshot:observedAfter)));
@@ -429,7 +430,7 @@ public sealed partial class Controller {
   if(recording||observer!=null||!steps[^1].RequiresReview||!previewText.Contains("OBSERVED / INFERRED"))throw new Exception("Observed Stop/preview failed");
   var observedRoundtrip=ReadSequence(JsonSerializer.Serialize(new StepSequence("SAP-Screen-Inspector-steps",1,DateTime.Now,"Observed",steps)));
   if(!observedRoundtrip.Steps[^1].RequiresReview)throw new Exception("Observation marker lost in JSON");
-  File.AppendAllText(Path.Combine(AppContext.BaseDirectory,"step-test.txt")," PASS: Windows input hook lifecycle, observed mode controls, final screen sample, review marker and JSON export.");
+  File.AppendAllText(Path.Combine(AppContext.BaseDirectory,"step-test.txt")," PASS: Windows input hook lifecycle, verified partial-window samples, changed-window rejection, observed mode controls, final screen sample, review marker and JSON export.");
   var initialSelection=new SelectionDetails{Kind="GridView",SampledAt=DateTime.Now,CurrentRow=0,CurrentColumn="DEMO_ID",SelectedRows="0",RowCount=20};
   var demoGrid=new ControlRow("wnd[0]/usr/grid","GuiShell","Demo grid","","","wnd[0]/usr",2,"True",""){SubType="GridView",Selection=initialSelection};
   var gridBefore=observedAfter with {Controls=[demoGrid]};

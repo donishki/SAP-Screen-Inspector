@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Windows.Threading;
 
@@ -48,7 +49,7 @@ internal sealed class SapInputMonitor : IInputMonitor {
   thread?.Join(2000);
  }
  static long Handle(IntPtr value)=>unchecked((uint)value.ToInt64());
- internal static bool Accepts(Snapshot snapshot,long root,uint processId)=>root!=0&&processId!=0&&(DateTime.Now-snapshot.Captured).TotalSeconds<=30&&snapshot.Windows.Any(w=>w.Handle==root&&w.ProcessId==processId);
+ internal static bool Accepts(Snapshot snapshot,long root,uint processId)=>root!=0&&processId!=0&&(DateTime.Now-Observation.ScopeTime(snapshot)).TotalSeconds<=30&&snapshot.Windows.Any(w=>w.Handle==root&&w.ProcessId==processId);
  void Enqueue(Snapshot current,string action,string detail,int x,int y,long root,long nativeTarget=0,ScreenBounds? bounds=null){
   if(Interlocked.Increment(ref count)>512){Interlocked.Decrement(ref count);Interlocked.Increment(ref dropped);return;}
   pending.Enqueue(doubleClicks.Classify(new(DateTime.Now,action,detail,x,y,root,current,nativeTarget,bounds)));
@@ -115,11 +116,14 @@ internal sealed class SapInputMonitor : IInputMonitor {
 internal static class Observation {
  internal static bool IsValueControl(string type)=>type is "GuiTextField" or "GuiCTextField" or "GuiOkCodeField" or "GuiComboBox" or "GuiCheckBox" or "GuiRadioButton";
  static bool Editable(ControlRow row)=>IsValueControl(row.Type)&&row.Changeable is "True" or "1" or "-1";
- static bool IsTarget(ControlRow row)=>IsValueControl(row.Type)||row.Type is "GuiButton" or "GuiTab" or "GuiShell" or "GuiGridView" or "GuiTree" or "GuiTableControl" or "GuiTextedit";
+ internal static bool IsTarget(string type)=>IsValueControl(type)||type is "GuiButton" or "GuiTab" or "GuiShell" or "GuiGridView" or "GuiTree" or "GuiTableControl" or "GuiTextedit";
+ internal static DateTime ScopeTime(Snapshot screen)=>screen.ScopeVerified&&screen.CompletedAt!=default?screen.CompletedAt:screen.Captured;
+ static DateTime ControlTime(ControlRow row,Snapshot screen)=>row.SampledAt!=default?row.SampledAt:screen.Captured;
  static bool IsStructure(ControlRow row)=>row.Type is not ("GuiMenu" or "GuiMenubar" or "GuiLabel" or "GuiStatusbar" or "GuiTitlebar");
  internal static CapturedStep Input(ObservedInput input){
   var window=input.Screen.Windows.First(w=>w.Handle==input.Window);
-  var candidates=input.Screen.Controls.Where(c=>c.Id.StartsWith(window.Id+"/",StringComparison.Ordinal)&&IsTarget(c)).ToList();
+  var candidates=input.Screen.Controls.Where(c=>c.Id.StartsWith(window.Id+"/",StringComparison.Ordinal)&&IsTarget(c.Type)&&
+   (input.Time-ControlTime(c,input.Screen)).TotalSeconds is >=0 and <=4).ToList();
   double age=Math.Max(0,(input.Time-input.Screen.Captured).TotalSeconds);
   int x=input.X,y=input.Y;
   bool resized=false;
@@ -127,7 +131,8 @@ internal static class Observation {
    resized=old.Width!=now.Width||old.Height!=now.Height;
    x-=now.Left-old.Left;y-=now.Top-old.Top;
   }
-  bool reliable=age<=4&&!resized&&input.Screen.Warnings.Count==0;
+  bool partial=input.Screen.Warnings.Count>0;
+  bool reliable=!resized&&(!partial||input.Screen.ScopeVerified);
   ControlRow? control=null;
   string match="";
   if(input.Action!="Press key"&&reliable){
@@ -149,7 +154,9 @@ internal static class Observation {
    SelectionContext=control?.Selection!=null?"Last sampled BEFORE this input; do not assume this was the clicked row/node.":
     control?.Type is "GuiShell" or "GuiGridView" or "GuiTree"?"Selection details unavailable for this shell; clicked row/node remains unknown.":"",
    Screen=input.Screen,Notes=$"Observed: {input.Detail}. {context} "+(control==null?"Target control unknown. ":$"Target: {control.Name} ({control.Type}). {match} ")+
-    (resized?"Window resized since sample. ":age>4?$"Screen sample is {age:0.0}s old. ":"")+"Review required."};
+     (control!=null?$"Control sampled at {ControlTime(control,input.Screen):HH:mm:ss.fff}. ":"")+
+     (partial?(input.Screen.ScopeVerified?"Partial screen: fresh controls retained after scope verification; other controls may be missing. ":"Partial screen: target scope could not be verified. "):"")+
+     (resized?"Window resized since sample. ":control==null&&age>4?$"Screen sample is {age:0.0}s old. ":"")+"Review required."};
  }
  internal static IEnumerable<CapturedStep> Changes(Snapshot before,Snapshot after){
   var old=before.Controls.GroupBy(c=>c.Id).ToDictionary(g=>g.Key,g=>g.First());
@@ -169,11 +176,12 @@ internal static class Observation {
    }
    if(!Editable(row)||!old.TryGetValue(row.Id,out var previous)||!Editable(previous))continue;
    bool values=before.ValuesIncluded&&after.ValuesIncluded;
-   if((values&&row.ObservedState!=previous.ObservedState)||(!previous.Modified&&row.Modified)){
+   if((values&&row.StateAvailable&&previous.StateAvailable&&row.ObservedState!=previous.ObservedState)||
+      (row.ModifiedAvailable&&previous.ModifiedAvailable&&!previous.Modified&&row.Modified)){
     bool text=row.Type is "GuiTextField" or "GuiCTextField" or "GuiOkCodeField";
     yield return new(){Captured=after.Captured,Action=text?"Enter text":"Choose item",ControlId=row.ShortId,RequiresReview=true,
-     Argument=values?row.ObservedState:"",Screen=after,
-     Notes="Observed field change; it may be caused by typing or by SAP itself. "+(values?"Sampled value included.":"Value excluded; enable Screen values before recording to include it.")+" Review required."};
+     Argument=values&&row.StateAvailable?row.ObservedState:"",Screen=after,
+     Notes="Observed field change; it may be caused by typing or by SAP itself. "+(values?(row.StateAvailable?"Sampled value included.":"Field value unavailable in this sample."):"Value excluded; enable Screen values before recording to include it.")+" Review required."};
    }
   }
  }
@@ -182,16 +190,19 @@ internal static class Observation {
 internal sealed class ObservedRecorder {
  readonly SapSession session;readonly bool values;
  readonly Func<Request,CancellationToken,Task<Reply>> read;
+ readonly ReaderSession? worker;
  readonly IInputMonitor monitor;
  readonly CancellationTokenSource cancel=new();
  readonly SemaphoreSlim inputSignal=new(0,1);
- readonly DispatcherTimer drainTimer=new(){Interval=TimeSpan.FromMilliseconds(150)};
- Snapshot current;Task? loop;bool stopped,gapReported;DateTime? failureSince;
+ readonly DispatcherTimer drainTimer=new(){Interval=TimeSpan.FromMilliseconds(100)};
+ Snapshot current,available;Task? loop;bool stopped,gapReported,partialReported;DateTime? failureSince;
  public event Action<CapturedStep>? Step;
  public event Action<string>? Gap;
  public event Action<string>? Notice;
  public ObservedRecorder(Snapshot initial,bool includeValues,Func<Request,CancellationToken,Task<Reply>>? reader=null,IInputMonitor? inputMonitor=null){
-  current=initial;session=initial.Session;values=includeValues;read=reader??Reader.Run;monitor=inputMonitor??new SapInputMonitor();
+  current=available=initial;session=initial.Session;values=includeValues;
+  if(reader==null){worker=new ReaderSession();read=worker.Read;}else read=reader;
+  monitor=inputMonitor??new SapInputMonitor();
  }
  public void Start(){
   monitor.Start(current);
@@ -204,11 +215,15 @@ internal sealed class ObservedRecorder {
   if(monitor.TakeDropped()>0)Gap?.Invoke("Input observations were lost because the input queue filled or the monitor encountered an error.");
  }
  async Task Poll(){
+  int delay=500;
   while(!cancel.IsCancellationRequested){
    try{
-    bool inputArrived=await inputSignal.WaitAsync(750,cancel.Token);
-    if(inputArrived)await Task.Delay(120,cancel.Token);
+    bool inputArrived=await inputSignal.WaitAsync(delay,cancel.Token);
+    if(inputArrived)await Task.Delay(60,cancel.Token);
+    var elapsed=Stopwatch.StartNew();
     await Sample(cancel.Token);
+    // Slow reads already provide the spacing. Keep a small pause to avoid a busy loop.
+    delay=(int)Math.Max(100,500-elapsed.ElapsedMilliseconds);
    }
    catch(OperationCanceledException) when(cancel.IsCancellationRequested){break;}
   }
@@ -216,6 +231,7 @@ internal sealed class ObservedRecorder {
  internal async Task Sample(CancellationToken token,bool final=false){
   Exception? failure=null;
   for(int attempt=0;attempt<2;attempt++){
+   bool retainedPartial=false;
    try{
     // Slow SAP screens get time to settle. Stop cancels this read immediately.
     int timeout=final?10:attempt==0?15:25;
@@ -224,25 +240,36 @@ internal sealed class ObservedRecorder {
     var next=result.Snapshot??throw new InvalidOperationException("SAP returned no screen sample.");
     if(next.Session.Id!=session.Id||next.Session.System!=session.System||next.Session.Client!=session.Client||next.Session.User!=session.User)
      throw new InvalidOperationException("SAP session identity changed.");
-    if(next.Controls.Count==0||next.Windows.Count==0||next.Windows.Any(w=>w.ProcessId==0)||next.Warnings.Count>0)
-     throw new SapReadException("Partial","SAP returned an incomplete screen sample; it was not used for change detection.");
+    if(next.Controls.Count==0||next.Windows.Count==0||next.Windows.Any(w=>w.ProcessId==0)||next.Warnings.Count>0){
+     if(next.ScopeVerified&&next.Controls.Count>0&&next.Windows.Count>0&&next.Windows.All(w=>w.ProcessId!=0)){
+      Drain();available=next;monitor.Update(next);retainedPartial=true;
+      if(!partialReported){
+       Step?.Invoke(new(){Captured=next.CompletedAt==default?next.Captured:next.CompletedAt,Action="Sampling note",RequiresReview=true,Screen=next,
+        Notes=$"Partial screen: retained {next.Controls.Count} controls with individual sample times after verifying the session and windows. Missing controls are not treated as removals or field changes. "+string.Join(" ",next.Warnings.Take(3))});
+       partialReported=true;
+      }
+     }
+     throw new SapReadException("Partial",retainedPartial?"SAP returned a partial screen. Fresh controls remain available for inferred input targets; screen-change comparison awaits a complete sample.":"SAP returned an incomplete screen without verified targets; it was not used for change detection.");
+    }
     Drain();
     if(failureSince!=null){
      Notice?.Invoke("Screen sampling resumed after SAP was busy or a sample was unavailable. Intermediate screens may be missing; retained input observations still require review.");
     }
     foreach(var step in Observation.Changes(current,next))Step?.Invoke(step);
-    current=next;monitor.Update(next);failureSince=null;gapReported=false;
+    current=available=next;monitor.Update(next);failureSince=null;gapReported=false;partialReported=false;
     return;
    }catch(OperationCanceledException) when(token.IsCancellationRequested){throw;}
    catch(Exception ex){
     failure=ex;failureSince??=DateTime.UtcNow;Drain();
     bool transient=ex is SapReadException {Kind:"Busy" or "Timeout" or "Partial"};
-    // Keep only recently verified HWND/process scope through transient waits. Never
-    // use stale or partial controls for targeting, and never keep scope after identity loss.
-    bool keepScope=transient&&(DateTime.Now-current.Captured).TotalSeconds<=30;
-    monitor.Update(current with {Controls=[],Windows=keepScope?current.Windows:[]});
+    // A verified partial screen can supply fresh individual targets. A failed read
+    // supplies only recent window scope, never stale controls or another session.
+    if(!retainedPartial){
+     bool keepScope=transient&&(DateTime.Now-Observation.ScopeTime(available)).TotalSeconds<=30;
+     available=available with {Controls=[],Windows=keepScope?available.Windows:[]};monitor.Update(available);
+    }
     if(!transient)break;
-    if(attempt==0)await Task.Delay(300,token);
+    if(attempt==0)await Task.Delay(150,token);
    }
   }
   bool briefBusy=failure is SapReadException {Kind:"Busy"}&&(DateTime.UtcNow-failureSince!.Value).TotalSeconds<8;
@@ -256,7 +283,7 @@ internal sealed class ObservedRecorder {
   if(stopped)return;stopped=true;
   // Stop collecting Windows input immediately. Then drain and obtain a final SAP sample.
   monitor.Dispose();drainTimer.Stop();cancel.Cancel();
-  if(loop!=null)await loop;
-  Drain();await Sample(CancellationToken.None,true);cancel.Dispose();inputSignal.Dispose();
+  try{if(loop!=null)await loop;Drain();await Sample(CancellationToken.None,true);}
+  finally{if(worker!=null)await worker.DisposeAsync();cancel.Dispose();inputSignal.Dispose();}
  }
 }

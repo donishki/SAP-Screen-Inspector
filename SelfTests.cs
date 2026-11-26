@@ -7,6 +7,7 @@ public static class SelfTests {
   RecorderTests.Run();
   SelectionTests.Run();
   ObservationTests.Run().GetAwaiter().GetResult();
+  SamplingTests.Run().GetAwaiter().GetResult();
   var password=new FakeNode{Id="wnd[0]/usr/pwd",Type="GuiPasswordField",Name="Secret",Secret=true};
   var field=new FakeNode{Id="wnd[0]/usr/txt",Type="GuiTextField",Name="Serial",Text="DEMO-SERIAL-001"};
   var window=new FakeNode{Id="wnd[0]",Type="GuiMainWindow",Name="Window",Children=[field,password]};
@@ -38,7 +39,7 @@ public static class SelfTests {
   try{Reader.Read(new("sessions"),engine);}catch(InvalidOperationException){rejected=true;}Check(rejected,"Server-disabled scripting handled");
   var roundtrip=System.Text.Json.JsonSerializer.Deserialize<Snapshot>(System.Text.Json.JsonSerializer.Serialize(visible))!;
   Check(roundtrip.Controls.Count==3,"Export roundtrip");
-  File.WriteAllText(Path.Combine(AppContext.BaseDirectory,"self-test.txt"),"PASS: discovery, traversal, hidden values, password exclusion, changed-session protection, disabled scripting, JSON export.");
+  File.WriteAllText(Path.Combine(AppContext.BaseDirectory,"self-test.txt"),"PASS: discovery, traversal, native recording, observation, grid/tree evidence, partial-screen recovery, worker reuse/cancellation/timeout, hidden values, password exclusion, changed-session protection, disabled scripting, JSON export.");
  }
 }
 public class FakeEngine {public List<FakeConnection> Children{get;set;}=[];}
